@@ -1,0 +1,10 @@
+FROM public.ecr.aws/aws-observability/aws-for-fluent-bit:stable
+
+# 复制自定义配置文件
+COPY fluent-bit.conf /fluent-bit/etc/fluent-bit.conf
+
+# 设置工作目录
+WORKDIR /fluent-bit
+
+# 启动Fluent Bit
+CMD ["/fluent-bit/bin/fluent-bit", "--config=/fluent-bit/etc/fluent-bit.conf"]
