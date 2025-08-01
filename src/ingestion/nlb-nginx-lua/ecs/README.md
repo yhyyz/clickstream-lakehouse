@@ -1,26 +1,26 @@
-# ECS Clickstream Deployment
+# ECS 点击流部署
 
-This directory contains an optimized ECS deployment script for the clickstream processing service.
+此目录包含用于点击流处理服务的优化ECS部署脚本。
 
-## Features
+## 功能特性
 
-- **Parameterized deployment**: Support for different regions, VPCs, and environments
-- **Automatic resource creation**: Creates IAM roles, security groups, and S3 buckets as needed
-- **VPC subnet auto-detection**: Automatically finds private subnets in the specified VPC
-- **Health checks**: Nginx container includes health check on `/health` endpoint
-- **Cross-account support**: Automatically detects account ID for ECR image URLs
-- **Environment-specific configuration**: All hardcoded values replaced with variables
+- **参数化部署**：支持不同的区域、VPC和环境
+- **自动资源创建**：根据需要创建IAM角色、安全组和S3存储桶
+- **VPC子网自动检测**：自动查找指定VPC中的私有子网
+- **健康检查**：Nginx容器包含`/health`端点的健康检查
+- **跨账户支持**：自动检测账户ID用于ECR镜像URL
+- **环境特定配置**：所有硬编码值替换为变量
 
-## Prerequisites
+## 前置条件
 
-- AWS CLI configured with appropriate permissions
-- Docker images pushed to ECR:
+- 配置了适当权限的AWS CLI
+- Docker镜像已推送到ECR：
   - `clickstream-openresty-lua-msk-optimized:latest`
   - `custom-fluent-bit-optimized:latest`
 
-## Quick Start
+## 快速开始
 
-### Basic Deployment
+### 基础部署
 
 ```bash
 ./deploy-ecs-optimized.sh \
@@ -29,7 +29,7 @@ This directory contains an optimized ECS deployment script for the clickstream p
   --kafka-broker-host my-kafka-broker.amazonaws.com
 ```
 
-### Advanced Deployment
+### 高级部署
 
 ```bash
 ./deploy-ecs-optimized.sh \
@@ -43,63 +43,63 @@ This directory contains an optimized ECS deployment script for the clickstream p
   --kafka-broker-host my-kafka-broker.amazonaws.com
 ```
 
-## Parameters
+## 参数说明
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `--region` | No | us-east-1 | AWS region |
-| `--cluster` | No | clickstream-cluster | ECS cluster name |
-| `--task-family` | No | clickstream-task-optimized | Task definition family |
-| `--service` | No | clickstream-optimized-service | Service name |
-| `--s3-bucket` | **Yes** | - | S3 bucket for data storage |
-| `--vpc` | **Yes** | - | VPC ID to deploy in |
-| `--subnets` | No | Auto-detected | Comma-separated subnet IDs |
-| `--security-groups` | No | Auto-created | Comma-separated security group IDs |
-| `--desired-count` | No | 4 | Number of tasks to run |
-| `--ebs-size` | No | 500 | EBS volume size in GiB |
-| `--kafka-broker-host` | **Yes** | - | Kafka broker hostname |
-| `--kafka-broker-port` | No | 9092 | Kafka broker port |
+| 参数 | 必需 | 默认值 | 描述 |
+|------|------|--------|------|
+| `--region` | 否 | us-east-1 | AWS区域 |
+| `--cluster` | 否 | clickstream-cluster | ECS集群名称 |
+| `--task-family` | 否 | clickstream-task-optimized | 任务定义族名称 |
+| `--service` | 否 | clickstream-optimized-service | 服务名称 |
+| `--s3-bucket` | **是** | - | 用于数据存储的S3存储桶 |
+| `--vpc` | **是** | - | 部署的VPC ID |
+| `--subnets` | 否 | 自动检测 | 逗号分隔的子网ID |
+| `--security-groups` | 否 | 自动创建 | 逗号分隔的安全组ID |
+| `--desired-count` | 否 | 4 | 要运行的任务数量 |
+| `--ebs-size` | 否 | 500 | EBS卷大小（GiB） |
+| `--kafka-broker-host` | **是** | - | Kafka代理主机名 |
+| `--kafka-broker-port` | 否 | 9092 | Kafka代理端口 |
 
-## What the Script Does
+## 脚本执行内容
 
-1. **Validates parameters** and shows configuration
-2. **Creates IAM roles** if they don't exist:
-   - ECS Task Execution Role
-   - ECS Task Role (with S3 and CloudWatch permissions)
-   - ECS Infrastructure Role (for EBS volume management)
-3. **Creates S3 bucket** with versioning enabled
-4. **Creates CloudWatch log group** for container logs
-5. **Creates ECS cluster** if it doesn't exist
-6. **Auto-detects private subnets** in the specified VPC (if not provided)
-7. **Creates default security group** (if not provided)
-8. **Generates configuration files** with proper variable substitution
-9. **Registers task definition** with health checks
-10. **Creates or updates ECS service**
-11. **Waits for service to stabilize**
+1. **验证参数**并显示配置
+2. **创建IAM角色**（如果不存在）：
+   - ECS任务执行角色
+   - ECS任务角色（具有S3和CloudWatch权限）
+   - ECS基础设施角色（用于EBS卷管理）
+3. **创建S3存储桶**并启用版本控制
+4. **创建CloudWatch日志组**用于容器日志
+5. **创建ECS集群**（如果不存在）
+6. **自动检测私有子网**在指定的VPC中（如果未提供）
+7. **创建默认安全组**（如果未提供）
+8. **生成配置文件**并进行适当的变量替换
+9. **注册任务定义**并配置健康检查
+10. **创建或更新ECS服务**
+11. **等待服务稳定**
 
-## Health Checks
+## 健康检查
 
-The nginx container includes a health check that:
-- Checks `http://localhost:8802/health` endpoint
-- Runs every 30 seconds
-- Times out after 5 seconds
-- Allows 3 retries
-- Has a 60-second startup grace period
+nginx容器包含健康检查，具体配置：
+- 检查`http://localhost:8802/health`端点
+- 每30秒运行一次
+- 5秒超时
+- 允许3次重试
+- 60秒启动宽限期
 
-## Security
+## 安全性
 
-- **No public IP assignment**: Tasks run in private subnets only
-- **Least privilege IAM roles**: Custom roles with minimal required permissions
-- **VPC security groups**: Network access controlled via security groups
+- **无公网IP分配**：任务仅在私有子网中运行
+- **最小权限IAM角色**：具有最小必需权限的自定义角色
+- **VPC安全组**：通过安全组控制网络访问
 
-## Troubleshooting
+## 故障排除
 
-### View deployment help
+### 查看部署帮助
 ```bash
 ./deploy-ecs-optimized.sh --help
 ```
 
-### Check service status
+### 检查服务状态
 ```bash
 aws ecs describe-services \
   --cluster clickstream-cluster \
@@ -107,12 +107,12 @@ aws ecs describe-services \
   --region us-east-1
 ```
 
-### View container logs
+### 查看容器日志
 ```bash
 aws logs tail /ecs/clickstream-cluster --follow --region us-east-1
 ```
 
-### Check task health
+### 检查任务健康状态
 ```bash
 aws ecs describe-tasks \
   --cluster clickstream-cluster \
@@ -120,31 +120,14 @@ aws ecs describe-tasks \
   --region us-east-1
 ```
 
-## Files
+## 文件说明
 
-- `deploy-ecs-optimized.sh`: Main deployment script
-- `task-definition-template.json`: Template for task definition
-- `service-definition-template.json`: Template for service definition
-- `task-definition.json`: Original task definition (for reference)
-- `service-definition.json`: Original service definition (for reference)
-- `deploy-ecs.sh`: Original deployment script (for reference)
-- `README.md`: English documentation
-- `README-zh.md`: Chinese documentation
+- `deploy-ecs-optimized.sh`：主部署脚本
 
-## Migration from Original Script
 
-The new script provides the same functionality as the original but with:
-- Better parameter handling
-- Automatic resource creation
-- Cross-environment support
-- Health checks
-- Improved error handling
+## 使用示例
 
-To migrate, simply use the new script with the appropriate parameters for your environment.
-
-## Usage Examples
-
-### Production Deployment
+### 在生产环境中部署
 ```bash
 ./deploy-ecs-optimized.sh \
   --region us-east-1 \
@@ -155,7 +138,7 @@ To migrate, simply use the new script with the appropriate parameters for your e
   --kafka-broker-host prod-kafka.internal.company.com
 ```
 
-### Test Environment Deployment
+### 在测试环境中部署
 ```bash
 ./deploy-ecs-optimized.sh \
   --region us-west-2 \
@@ -166,7 +149,7 @@ To migrate, simply use the new script with the appropriate parameters for your e
   --kafka-broker-host test-kafka.internal.company.com
 ```
 
-### Custom Subnets and Security Groups
+### 使用自定义子网和安全组
 ```bash
 ./deploy-ecs-optimized.sh \
   --s3-bucket my-clickstream-data \
@@ -176,26 +159,21 @@ To migrate, simply use the new script with the appropriate parameters for your e
   --kafka-broker-host kafka.example.com
 ```
 
-## Notes
+## 注意事项
 
-- If subnets are not specified, the script will automatically find private subnets in the specified VPC
-- If security groups are not specified, a default security group will be created
-- The script will create necessary IAM roles if they don't exist
-- ECS cluster will be created if it doesn't exist
-- All resources use consistent naming conventions for easy management
+- 如果未指定子网，脚本将自动查找指定VPC中的私有子网
+- 如果未指定安全组，将创建默认安全组
+- 脚本将在不存在时创建必要的IAM角色
+- 如果ECS集群不存在，将创建ECS集群
+- 所有资源都使用一致的命名约定以便于管理
 
-## Supported AWS Services
+## 支持的AWS服务
 
-This script integrates with the following AWS services:
-- **Amazon ECS**: Container orchestration
-- **Amazon ECR**: Container image registry
-- **Amazon S3**: Data storage
-- **Amazon VPC**: Network isolation
-- **AWS IAM**: Access management
-- **Amazon CloudWatch**: Logging and monitoring
-- **Amazon EBS**: Persistent storage
-
-## Documentation
-
-- [English Documentation](README.md)
-- [中文文档](README-zh.md)
+此脚本与以下AWS服务集成：
+- **Amazon ECS**：容器编排
+- **Amazon ECR**：容器镜像注册表
+- **Amazon S3**：数据存储
+- **Amazon VPC**：网络隔离
+- **AWS IAM**：访问管理
+- **Amazon CloudWatch**：日志记录和监控
+- **Amazon EBS**：持久存储
