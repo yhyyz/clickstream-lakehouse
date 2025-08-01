@@ -1,0 +1,16 @@
+部署时间: Fri Aug  1 05:55:15 UTC 2025
+区域: us-east-1
+VPC ID: vpc-0e1bd10042a247fdf
+集群名称: clickstream-cluster
+服务名称: clickstream-optimized-service
+NLB名称: clickstream-optimize-nlb
+NLB ARN: arn:aws:elasticloadbalancing:us-east-1:305996241648:loadbalancer/net/clickstream-optimize-nlb/ee9a9195c4d6d817
+NLB DNS: clickstream-optimize-nlb-ee9a9195c4d6d817.elb.us-east-1.amazonaws.com
+目标组名称: clickstream-optimize-tg
+目标组ARN: arn:aws:elasticloadbalancing:us-east-1:305996241648:targetgroup/clickstream-optimize-tg/b1f6743cab745049
+容器名称: clickstream-container
+容器端口: 8802
+访问URL: http://clickstream-optimize-nlb-ee9a9195c4d6d817.elb.us-east-1.amazonaws.com:8802
+ECS服务子网(私有): subnet-08431aadfacd2f102 subnet-071d6e2b7bb0c4834 subnet-0af4168d528e96bd6
+NLB子网(公有): subnet-04d4481e923cf8faa subnet-060dfa6695f6d2d46 subnet-056af24e77e8f8d25
+ECS服务可用区: us-east-1a us-east-1b us-east-1c 

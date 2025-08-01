@@ -21,6 +21,7 @@ RUN wget https://github.com/doujiang24/lua-resty-kafka/archive/master.zip \
 COPY nginx.conf /opt/app/collect-app/conf/nginx.conf
 COPY collect-app.conf /opt/app/collect-app/conf/vhost/collect-app.conf
 COPY collect-app.lua /opt/app/collect-app/lua/collect-app.lua
+COPY kafka-health.lua /opt/app/collect-app/lua/kafka-health.lua
 COPY start.sh /opt/app/collect-app/start.sh
 
 # 设置执行权限
