@@ -12,6 +12,7 @@ DEFAULT_GLUE_DATABASE="iceberg_db"
 DEFAULT_TOPIC_NAME="app_logs"
 DEFAULT_WORKER_COUNT=6
 DEFAULT_MCU_COUNT=1
+DEFAULT_PARTITION_TIME_COL="ingestion_time"
 FORCE_RECREATE=false
 
 # Global variables for tracking execution
@@ -55,7 +56,8 @@ generate_info_file() {
         "connector_name": "${CONNECTOR_NAME:-msk-s3-sink-iceberg}",
         "connector_arn": "${CONNECTOR_ARN:-}",
         "connector_type": "Iceberg Sink",
-        "region": "${REGION:-us-east-1}"
+        "region": "${REGION:-us-east-1}",
+        "partition_time_col": "${PARTITION_TIME_COL:-ingestion_time}"
     },
     "msk_info": {
         "cluster_name": "${MSK_CLUSTER_NAME:-}",
@@ -116,13 +118,18 @@ OPTIONS:
     -t, --topic TOPIC          Kafka topic name (default: $DEFAULT_TOPIC_NAME)
     -w, --workers COUNT        Number of workers (default: $DEFAULT_WORKER_COUNT)
     -m, --mcu COUNT           MCU count (default: $DEFAULT_MCU_COUNT)
+    -p, --partition-time-col COL  Partition time column type: ingestion_time|kafka_time (default: $DEFAULT_PARTITION_TIME_COL)
     -f, --force               Force recreate existing resources
     -h, --help                Show this help message
+
+PARTITION TIME COLUMN:
+    ingestion_time    Use connector ingestion timestamp (default)
+    kafka_time        Use Kafka message timestamp
 
 EXAMPLES:
     $0 my-bucket my-msk-cluster
     $0 --region ap-southeast-1 --database my_db --topic logs my-bucket my-cluster
-    $0 --force --workers 4 my-bucket my-cluster
+    $0 --partition-time-col kafka_time --force --workers 4 my-bucket my-cluster
 
 OUTPUT:
     Creates an info file: msk-iceberg-connector-info.json with connector details
@@ -156,6 +163,15 @@ while [[ $# -gt 0 ]]; do
             MCU_COUNT="$2"
             shift 2
             ;;
+        -p|--partition-time-col)
+            PARTITION_TIME_COL="$2"
+            # Validate partition time column value
+            if [[ "$PARTITION_TIME_COL" != "ingestion_time" && "$PARTITION_TIME_COL" != "kafka_time" ]]; then
+                echo "Error: partition-time-col must be either 'ingestion_time' or 'kafka_time'"
+                exit 1
+            fi
+            shift 2
+            ;;
         -f|--force)
             FORCE_RECREATE=true
             shift
@@ -177,6 +193,7 @@ GLUE_DATABASE=${GLUE_DATABASE:-$DEFAULT_GLUE_DATABASE}
 TOPIC_NAME=${TOPIC_NAME:-$DEFAULT_TOPIC_NAME}
 WORKER_COUNT=${WORKER_COUNT:-$DEFAULT_WORKER_COUNT}
 MCU_COUNT=${MCU_COUNT:-$DEFAULT_MCU_COUNT}
+PARTITION_TIME_COL=${PARTITION_TIME_COL:-$DEFAULT_PARTITION_TIME_COL}
 
 # Check required parameters
 if [ $# -lt 2 ]; then
@@ -201,6 +218,7 @@ echo "Glue Database: $GLUE_DATABASE"
 echo "Topic: $TOPIC_NAME"
 echo "Workers: $WORKER_COUNT"
 echo "MCU Count: $MCU_COUNT"
+echo "Partition Time Column: $PARTITION_TIME_COL"
 echo "Force Recreate: $FORCE_RECREATE"
 echo "============================================"
 
@@ -413,7 +431,6 @@ fi
 # Get account ID
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region $REGION)
 ROLE_ARN="arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME"
-
 # Download and create custom plugin for Iceberg
 PLUGIN_NAME="msk-iceberg-sink-plugin"
 PLUGIN_S3_KEY="plugins/iceberg-kafka-connect-runtime-0.6.19.zip"
@@ -517,7 +534,6 @@ fi
 
 # Ensure we have the plugin ARN
 PLUGIN_ARN=$(aws kafkaconnect list-custom-plugins --region $REGION --query "customPlugins[?name=='$PLUGIN_NAME'].customPluginArn" --output text)
-
 # Create connector
 CONNECTOR_NAME="msk-s3-sink-iceberg"
 CONNECTOR_ARN="arn:aws:kafkaconnect:$REGION:$ACCOUNT_ID:connector/$CONNECTOR_NAME"
@@ -529,6 +545,28 @@ CONNECTOR_ARN=$(aws kafkaconnect list-connectors --region $REGION --query "conne
 
 if [ -z "$CONNECTOR_ARN" ] || [ "$CONNECTOR_ARN" = "None" ]; then
     echo "Creating Iceberg connector: $CONNECTOR_NAME"
+    
+    # Configure transforms based on partition_time_col parameter
+    if [ "$PARTITION_TIME_COL" = "kafka_time" ]; then
+        # Use kafka_time: add insertTS transform, remove timestampConverter
+        TRANSFORMS_CONFIG='"transforms": "insertTS,flatten",'
+        INSERTTS_CONFIG='"transforms.insertTS.type": "org.apache.kafka.connect.transforms.InsertField$Value",
+        "transforms.insertTS.timestamp.field": "messageTS",'
+        "iceberg.tables.default-partition-by": "day(messageTS)",
+        TIMESTAMP_CONVERTER_CONFIG=""
+        echo "Using kafka_time configuration: insertTS transform enabled, timestampConverter disabled"
+    else
+        # Use ingestion_time (default): keep original configuration
+        TRANSFORMS_CONFIG='"transforms": "insertTS,flatten,timestampConverter",'
+        INSERTTS_CONFIG='"transforms.insertTS.type": "org.apache.kafka.connect.transforms.InsertField$Value",
+        "transforms.insertTS.timestamp.field": "messageTS",'
+        TIMESTAMP_CONVERTER_CONFIG='"transforms.timestampConverter.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+        "transforms.timestampConverter.target.type": "Timestamp",
+        "transforms.timestampConverter.field": "meta_ctime",
+        "iceberg.tables.default-partition-by": "day(meta_ctime)",
+        "transforms.timestampConverter.unix.precision": "milliseconds",'
+        echo "Using ingestion_time configuration: both insertTS and timestampConverter enabled"
+    fi
     
     # Create connector configuration
     cat > connector-config.json << EOF
@@ -572,23 +610,20 @@ if [ -z "$CONNECTOR_ARN" ] || [ "$CONNECTOR_ARN" = "None" ]; then
     "connectorConfiguration": {
         "connector.class": "io.tabular.iceberg.connect.IcebergSinkConnector",
         "iceberg.tables.evolve-schema-enabled": "true",
-        "transforms.timestampConverter.unix.precision": "milliseconds",
         "iceberg.catalog.catalog-impl": "org.apache.iceberg.aws.glue.GlueCatalog",
         "transforms.flatten.type": "org.apache.kafka.connect.transforms.Flatten\$Value",
-        "iceberg.tables.default-partition-by": "day(meta_ctime)",
         "tasks.max": "3",
         "topics": "$TOPIC_NAME",
         "iceberg.catalog.io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
-        "transforms": "flatten,timestampConverter",
+        $TRANSFORMS_CONFIG
         "iceberg.catalog.client.region": "$REGION",
         "iceberg.control.commit.interval-ms": "120000",
         "transforms.flatten.delimiter": "_",
         "iceberg.tables.auto-create-enabled": "true",
-        "transforms.timestampConverter.type": "org.apache.kafka.connect.transforms.TimestampConverter\$Value",
-        "transforms.timestampConverter.target.type": "Timestamp",
+        $INSERTTS_CONFIG
+        $TIMESTAMP_CONVERTER_CONFIG
         "iceberg.tables.write-props.write.metadata.previous-versions-max": "1",
         "iceberg.tables": "$GLUE_DATABASE.$TOPIC_NAME",
-        "transforms.timestampConverter.field": "meta_ctime",
         "iceberg.catalog.warehouse": "s3://$S3_BUCKET/app-logs-data-v1/",
         "iceberg.control.topic": "control-iceberg",
         "iceberg.catalog.s3.path-style-access": "true"
@@ -634,6 +669,7 @@ echo "Connector ARN: ${CONNECTOR_ARN:-Not available}"
 echo "Plugin S3 Location: s3://$S3_BUCKET/${PLUGIN_S3_KEY:-plugins/iceberg-kafka-connect-runtime-0.6.19.zip}"
 echo "Worker Count: ${WORKER_COUNT:-6}"
 echo "MCU Count: ${MCU_COUNT:-1}"
+echo "Partition Time Column: ${PARTITION_TIME_COL:-ingestion_time}"
 echo "Data Location: s3://$S3_BUCKET/app-logs-data-v1/"
 echo "Glue Database: ${GLUE_DATABASE:-iceberg_db}"
 echo "Iceberg Table: ${GLUE_DATABASE:-iceberg_db}.${TOPIC_NAME:-app_logs}"

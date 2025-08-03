@@ -1,17 +1,41 @@
 # Clickstream Lakehouse 点击流数据湖解决方案
 
-这是一个基于AWS服务构建的完整点击流数据湖解决方案，支持实时数据采集、流式处理和数据湖存储。
+这是一个基于AWS服务构建的完整点击流数据湖解决方案，支持实时数据采集、流式处理和数据湖存储。项目提供两种不同的部署方案以满足不同的性能和功能需求。
 
 ## 架构概览
 
+### 方案一：NLB + Nginx + Fluent Bit (高性能方案)
 ```
 用户请求 -> NLB -> ECS (Nginx + Fluent Bit) -> MSK -> MSK Connector -> Iceberg/S3
 ```
 
+### 方案二：ALB + Nginx + Vector (功能丰富方案)
+```
+用户请求 -> ALB -> ECS (Nginx + Vector) -> MSK -> MSK Connector -> Iceberg/S3
+```
+
+### 方案对比
+
+| 特性 | NLB + Nginx + Fluent Bit | ALB + Nginx + Vector |
+|------|---------------------------|----------------------|
+| **负载均衡器类型** | 网络负载均衡器 (Layer 4) | 应用负载均衡器 (Layer 7) |
+| **性能** | 更高性能，更低延迟 | 中等性能，适中延迟 |
+| **协议支持** | TCP/UDP | HTTP/HTTPS |
+| **路由功能** | 基础路由 | 丰富的路由规则 |
+| **监控能力** | 基础监控 | 更详细的应用层监控 |
+| **SSL终止** | 透传 | 支持SSL终止 |
+| **适用场景** | 高吞吐量、低延迟要求 | 需要应用层功能和监控 |
+| **成本** | 相对较低 | 相对较高 |
+
 ### 数据链路说明
 
-1. **NLB (Network Load Balancer)**: 接收用户的点击流请求
-2. **ECS (Elastic Container Service)**: 运行Nginx和Fluent Bit容器处理请求
+1. **负载均衡器**: 接收用户的点击流请求
+   - **NLB**: 网络负载均衡器，提供高性能的Layer 4负载均衡
+   - **ALB**: 应用负载均衡器，提供丰富的Layer 7功能
+2. **ECS (Elastic Container Service)**: 运行数据处理容器
+   - **Nginx**: Web服务器，接收和预处理HTTP请求
+   - **Fluent Bit**: 轻量级日志处理器，高性能数据转发
+   - **Vector**: 现代化数据管道工具，提供更丰富的数据处理功能
 3. **MSK (Managed Streaming for Apache Kafka)**: 作为消息队列缓冲数据
 4. **MSK Connector**: 将Kafka数据写入到数据湖
 5. **Iceberg/S3**: 最终的数据湖存储
@@ -20,20 +44,27 @@
 
 ```
 clickstream-lakehouse/
-├── deploy-all.sh                    # 统一部署脚本
-├── test-data-flow.sh               # 数据流测试脚本
-├── example-deploy.sh               # 部署示例脚本
-├── test-example.sh                 # 测试示例脚本
-├── README.md                        # 本文档
-├── prompt.md                        # 项目需求说明
+├── deploy-all.sh                           # 通用部署脚本入口
+├── deploy-nlb-nginx-lua-msk-all.sh        # NLB方案统一部署脚本
+├── deploy-alb-nginx-vector-msk-all.sh     # ALB方案统一部署脚本
+├── test-nlb-data-flow.sh                  # NLB方案数据流测试脚本
+├── test-alb-data-flow.sh                  # ALB方案数据流测试脚本
+├── example-deploy.sh                      # 部署示例脚本
+├── README.md                              # 本文档
+├── prompt.md                              # 项目需求说明
 └── src/
-    ├── ingestion/                   # 数据采集组件
-    │   └── nlb-nginx-lua/
-    │       ├── docker/              # Docker镜像构建
-    │       ├── ecs/                 # ECS服务部署
-    │       └── nlb/                 # 负载均衡器部署
-    └── msk-iceberg/                 # MSK和Iceberg连接器
-        ├── create-msk-topics.sh     # 创建MSK主题
+    ├── ingestion/                         # 数据采集组件
+    │   ├── nlb-nginx-lua/                # NLB + Nginx + Fluent Bit 方案
+    │   │   ├── docker/                   # Docker镜像构建
+    │   │   ├── ecs/                      # ECS服务部署
+    │   │   └── nlb/                      # 网络负载均衡器部署
+    │   └── alb-nginx-vector/             # ALB + Nginx + Vector 方案
+    │       ├── docker/                   # Docker镜像构建
+    │       ├── ecs/                      # ECS服务部署
+    │       ├── alb/                      # 应用负载均衡器部署
+    │       └── tmp/                      # 临时文件和部署信息
+    └── msk-iceberg/                      # MSK和Iceberg连接器
+        ├── create-msk-topics.sh          # 创建MSK主题
         ├── create-s3-iceberg-connector-optimized.sh  # Iceberg连接器
         └── create-s3-json-connector-optimized.sh     # S3连接器
 ```
@@ -51,11 +82,12 @@ clickstream-lakehouse/
    - MSK: 管理Kafka集群和连接器
    - CloudWatch: 创建日志组
    - Glue: 管理数据目录
+   - ELB: 创建和管理负载均衡器
 
 2. **Docker** 已安装并运行
 
 3. **已创建的AWS资源**：
-   - VPC和私有子网
+   - VPC和私有子网（ALB方案还需要公有子网）
    - MSK集群（已运行状态）
    - S3存储桶（用于数据存储）
 
@@ -67,47 +99,84 @@ clickstream-lakehouse/
 
 ## 快速开始
 
-### 1. 完整部署
+### 1. 选择部署方案
 
-使用统一部署脚本一键部署整个解决方案：
+项目提供统一的部署入口，支持两种方案：
 
 ```bash
-./deploy-all.sh \
-  --s3-bucket my-clickstream-bucket \
-  --msk-cluster my-msk-cluster \
-  --region us-east-1
+# 使用 NLB + Nginx + Fluent Bit 方案（高性能）
+./deploy-all.sh nlb -b my-clickstream-bucket -m my-msk-cluster
+
+# 使用 ALB + Nginx + Vector 方案（功能丰富）
+./deploy-all.sh alb -b my-clickstream-bucket -m my-msk-cluster
+
+# 默认使用 NLB 方案
+./deploy-all.sh -b my-clickstream-bucket -m my-msk-cluster
 ```
 
-### 2. 分阶段部署
+### 2. 查看方案帮助信息
 
-如果需要分阶段部署或跳过某些步骤：
+```bash
+# 查看通用帮助
+./deploy-all.sh --help
+
+# 查看 NLB 方案详细参数
+./deploy-all.sh nlb --help
+
+# 查看 ALB 方案详细参数
+./deploy-all.sh alb --help
+```
+
+### 3. 完整部署示例
+
+#### NLB 方案部署
+```bash
+./deploy-all.sh nlb \
+  --s3-bucket my-clickstream-bucket \
+  --msk-cluster my-msk-cluster \
+  --region us-east-1 \
+  --desired-count 4
+```
+
+#### ALB 方案部署
+```bash
+./deploy-all.sh alb \
+  --s3-bucket my-clickstream-bucket \
+  --msk-cluster my-msk-cluster \
+  --region us-east-1 \
+  --desired-count 4
+```
+
+### 4. 分阶段部署
+
+两种方案都支持分阶段部署：
 
 ```bash
 # 跳过Docker镜像构建（如果镜像已存在）
-./deploy-all.sh \
+./deploy-all.sh nlb \
   --s3-bucket my-bucket \
   --msk-cluster my-cluster \
   --skip-docker
 
 # 只部署MSK相关组件
-./deploy-all.sh \
+./deploy-all.sh alb \
   --s3-bucket my-bucket \
   --msk-cluster my-cluster \
-  --skip-docker --skip-ecs --skip-nlb
+  --skip-docker --skip-ecs --skip-alb
 
 # 手动指定VPC（如果自动检测失败）
-./deploy-all.sh \
+./deploy-all.sh nlb \
   --s3-bucket my-bucket \
   --vpc vpc-12345678 \
   --msk-cluster my-cluster
 ```
 
-### 3. 查看部署计划
+### 5. 查看部署计划
 
 使用dry-run模式查看将要执行的操作：
 
 ```bash
-./deploy-all.sh \
+./deploy-all.sh nlb \
   --s3-bucket my-bucket \
   --msk-cluster my-cluster \
   --dry-run
@@ -134,28 +203,29 @@ clickstream-lakehouse/
 
 ### 部署阶段控制
 
-| 参数 | 说明 |
-|------|------|
-| `--skip-docker` | 跳过Docker镜像构建 |
-| `--skip-ecs` | 跳过ECS部署 |
-| `--skip-nlb` | 跳过NLB部署 |
-| `--skip-msk-topics` | 跳过MSK主题创建 |
-| `--skip-iceberg-connector` | 跳过Iceberg连接器创建 |
-| `--skip-s3-connector` | 跳过S3连接器创建 |
+| 参数 | NLB方案 | ALB方案 | 说明 |
+|------|---------|---------|------|
+| `--skip-docker` | ✓ | ✓ | 跳过Docker镜像构建 |
+| `--skip-ecs` | ✓ | ✓ | 跳过ECS部署 |
+| `--skip-nlb` | ✓ | - | 跳过NLB部署 |
+| `--skip-alb` | - | ✓ | 跳过ALB部署 |
+| `--skip-msk-topics` | ✓ | ✓ | 跳过MSK主题创建 |
+| `--skip-iceberg-connector` | ✓ | ✓ | 跳过Iceberg连接器创建 |
+| `--skip-s3-connector` | ✓ | ✓ | 跳过S3连接器创建 |
 
 ## 手动部署步骤
 
 如果需要手动执行各个步骤，可以按以下顺序进行：
 
-### 1. 构建Docker镜像
+### NLB 方案手动部署
 
+#### 1. 构建Docker镜像
 ```bash
 cd src/ingestion/nlb-nginx-lua/docker
 ./build-all-images.sh --region us-east-1
 ```
 
-### 2. 部署ECS服务
-
+#### 2. 部署ECS服务
 ```bash
 cd src/ingestion/nlb-nginx-lua/ecs
 ./deploy-ecs-optimized.sh \
@@ -165,8 +235,7 @@ cd src/ingestion/nlb-nginx-lua/ecs
   --kafka-broker-host my-kafka-broker.amazonaws.com
 ```
 
-### 3. 部署网络负载均衡器
-
+#### 3. 部署网络负载均衡器
 ```bash
 cd src/ingestion/nlb-nginx-lua/nlb
 ./deploy-nlb-optimized.sh \
@@ -174,22 +243,46 @@ cd src/ingestion/nlb-nginx-lua/nlb
   --vpc vpc-12345678
 ```
 
-### 4. 创建MSK主题
+### ALB 方案手动部署
 
+#### 1. 构建Docker镜像
+```bash
+cd src/ingestion/alb-nginx-vector/docker
+./build-all-images.sh --region us-east-1
+```
+
+#### 2. 部署ECS服务
+```bash
+cd src/ingestion/alb-nginx-vector/ecs
+./deploy-ecs-optimized.sh \
+  --region us-east-1 \
+  --vpc vpc-12345678 \
+  --kafka-broker-host my-kafka-broker.amazonaws.com
+```
+
+#### 3. 部署应用负载均衡器
+```bash
+cd src/ingestion/alb-nginx-vector/alb
+./deploy-alb-optimized.sh \
+  --region us-east-1 \
+  --vpc vpc-12345678
+```
+
+### 共同步骤
+
+#### 4. 创建MSK主题
 ```bash
 cd src/msk-iceberg
 ./create-msk-topics.sh --cluster-name my-msk-cluster
 ```
 
-### 5. 创建Iceberg连接器
-
+#### 5. 创建Iceberg连接器
 ```bash
 cd src/msk-iceberg
 ./create-s3-iceberg-connector-optimized.sh my-bucket my-msk-cluster
 ```
 
-### 6. 创建S3连接器
-
+#### 6. 创建S3连接器
 ```bash
 cd src/msk-iceberg
 ./create-s3-json-connector-optimized.sh my-bucket my-msk-cluster
@@ -199,6 +292,7 @@ cd src/msk-iceberg
 
 ### 1. 检查ECS服务状态
 
+#### NLB 方案
 ```bash
 aws ecs describe-services \
   --cluster clickstream-cluster \
@@ -206,64 +300,120 @@ aws ecs describe-services \
   --region us-east-1
 ```
 
-### 2. 检查NLB状态
+#### ALB 方案
+```bash
+aws ecs describe-services \
+  --cluster clickstream-alb-cluster \
+  --services clickstream-alb-optimized-service \
+  --region us-east-1
+```
 
+### 2. 检查负载均衡器状态
+
+#### NLB 方案
 ```bash
 aws elbv2 describe-load-balancers \
   --names clickstream-optimized-service-nlb \
   --region us-east-1
 ```
 
-### 3. 检查MSK连接器状态
+#### ALB 方案
+```bash
+aws elbv2 describe-load-balancers \
+  --names clickstream-alb-optimized-service-alb \
+  --region us-east-1
+```
 
+### 3. 检查MSK连接器状态
 ```bash
 aws kafkaconnect list-connectors --region us-east-1
 ```
 
 ### 4. 查看容器日志
 
+#### NLB 方案
 ```bash
 aws logs tail /ecs/clickstream-cluster --follow --region us-east-1
+```
+
+#### ALB 方案
+```bash
+aws logs tail /ecs/clickstream-alb-cluster --follow --region us-east-1
 ```
 
 ## 生成的信息文件
 
 部署完成后，会在相应目录生成以下信息文件：
 
+### NLB 方案
 - `src/ingestion/nlb-nginx-lua/nlb/nlb-info.txt` - NLB信息
+- `src/msk-iceberg/msk-topics-info.json` - MSK主题信息
+- `src/msk-iceberg/msk-iceberg-connector-info.json` - Iceberg连接器信息
+- `src/msk-iceberg/msk-s3-json-connector-info.json` - S3连接器信息
+
+### ALB 方案
+- `src/ingestion/alb-nginx-vector/tmp/docker-images-info.json` - Docker镜像信息
+- `src/ingestion/alb-nginx-vector/tmp/ecs-service-info.json` - ECS服务信息
+- `src/ingestion/alb-nginx-vector/tmp/alb-info.json` - ALB信息
 - `src/msk-iceberg/msk-topics-info.json` - MSK主题信息
 - `src/msk-iceberg/msk-iceberg-connector-info.json` - Iceberg连接器信息
 - `src/msk-iceberg/msk-s3-json-connector-info.json` - S3连接器信息
 
 ## 数据流测试
 
-### 使用测试脚本
+### NLB 方案测试
 
-项目提供了专门的测试脚本 `test-data-flow.sh` 来验证部署后的数据链路：
+使用专门的测试脚本验证 NLB 方案的数据链路：
 
 ```bash
 # 基本测试（使用默认参数）
-./test-data-flow.sh
+./test-nlb-data-flow.sh
 
 # 指定项目名称和消息数量
-./test-data-flow.sh --project my_topic --count 50
+./test-nlb-data-flow.sh --project my_topic --count 50
 
 # 指定区域和NLB名称
-./test-data-flow.sh --region us-west-2 --nlb-name my-nlb
+./test-nlb-data-flow.sh --region us-west-2 --nlb-name my-nlb
 
 # 高频测试
-./test-data-flow.sh --count 100 --interval 0.1
+./test-nlb-data-flow.sh --count 100 --interval 0.1
+
+# 显示详细响应信息（用于调试）
+./test-nlb-data-flow.sh --verbose
 ```
 
-#### 测试脚本参数
+### ALB 方案测试
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--region` | `us-east-1` | AWS区域 |
-| `--nlb-name` | `clickstream-optimized-service-nlb` | NLB名称 |
-| `--project` | `app_logs` | 项目名称/MSK主题名称 |
-| `--count` | `10` | 发送测试消息数量 |
-| `--interval` | `1` | 消息发送间隔（秒） |
+使用专门的测试脚本验证 ALB 方案的数据链路：
+
+```bash
+# 基本测试（使用默认参数）
+./test-alb-data-flow.sh
+
+# 指定项目名称和消息数量
+./test-alb-data-flow.sh --project my_topic --count 50
+
+# 指定区域和ALB名称
+./test-alb-data-flow.sh --region us-west-2 --alb-name my-alb
+
+# 高频测试
+./test-alb-data-flow.sh --count 100 --interval 0.1
+
+# 显示详细响应信息（用于调试）
+./test-alb-data-flow.sh --verbose
+```
+
+#### 测试脚本参数对比
+
+| 参数 | NLB测试脚本 | ALB测试脚本 | 默认值 | 说明 |
+|------|-------------|-------------|--------|------|
+| `--region` | ✓ | ✓ | `us-east-1` | AWS区域 |
+| `--nlb-name` | ✓ | - | `clickstream-optimize-nlb` | NLB名称 |
+| `--alb-name` | - | ✓ | `clickstream-alb-opti-alb` | ALB名称 |
+| `--project` | ✓ | ✓ | `app_logs` | 项目名称/MSK主题名称 |
+| `--count` | ✓ | ✓ | `10` | 发送测试消息数量 |
+| `--interval` | ✓ | ✓ | `1` | 消息发送间隔（秒） |
+| `--verbose` | ✓ | ✓ | `false` | 显示详细的响应信息 |
 
 #### 测试数据特征
 
@@ -274,8 +424,7 @@ aws logs tail /ecs/clickstream-cluster --follow --region us-east-1
 
 ### 手动发送测试数据
 
-如果需要手动发送测试请求：
-
+#### NLB 方案
 ```bash
 # 获取NLB DNS名称
 NLB_DNS=$(aws elbv2 describe-load-balancers \
@@ -284,14 +433,24 @@ NLB_DNS=$(aws elbv2 describe-load-balancers \
   --output text \
   --region us-east-1)
 
-# 准备测试数据
-TEST_DATA='{"event": "page_view", "user_id": "test123", "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
-
-# Base64编码
-ENCODED_DATA=$(echo -n "$TEST_DATA" | base64 -w 0)
-
 # 发送请求
 curl -X POST "http://$NLB_DNS:8802/collect" \
+  -H "Content-Type: application/json" \
+  -H "project: app_logs" \
+  -d "$ENCODED_DATA"
+```
+
+#### ALB 方案
+```bash
+# 获取ALB DNS名称
+ALB_DNS=$(aws elbv2 describe-load-balancers \
+  --names clickstream-alb-optimized-service-alb \
+  --query 'LoadBalancers[0].DNSName' \
+  --output text \
+  --region us-east-1)
+
+# 发送请求
+curl -X POST "http://$ALB_DNS/collect" \
   -H "Content-Type: application/json" \
   -H "project: app_logs" \
   -d "$ENCODED_DATA"
@@ -313,36 +472,6 @@ aws s3 ls s3://your-bucket/topics/app_logs/ --recursive
 3. **检查Iceberg表**：
 ```bash
 # 通过Athena或Spark查询Iceberg表
-```
-
-### 测试脚本输出示例
-
-```
-==========================================
-Clickstream Lakehouse 数据流测试
-==========================================
-AWS区域: us-east-1
-NLB名称: clickstream-optimized-service-nlb
-项目名称: app_logs
-消息数量: 10
-发送间隔: 1秒
-数据编码: Base64
-==========================================
-NLB DNS: my-nlb-123456789.elb.us-east-1.amazonaws.com
-测试端点: http://my-nlb-123456789.elb.us-east-1.amazonaws.com:8802/collect
-
-发送消息 1/10... ✓ 成功 (HTTP 200)
-发送消息 2/10... ✓ 成功 (HTTP 200)
-...
-==========================================
-测试完成!
-==========================================
-总消息数: 10
-成功发送: 10
-发送失败: 0
-成功率: 100%
-项目名称: app_logs
-数据编码: Base64
 ```
 
 ## 故障排除
@@ -367,13 +496,21 @@ NLB DNS: my-nlb-123456789.elb.us-east-1.amazonaws.com
 4. **网络连接问题**
    - 检查安全组规则
    - 验证子网路由表
-   - 确认NLB健康检查
+   - 确认负载均衡器健康检查
+
+5. **ALB特有问题**
+   - 确认公有子网配置
+   - 检查Internet Gateway连接
+   - 验证路由表配置
 
 ### 日志查看
 
 ```bash
-# ECS容器日志
+# ECS容器日志 (NLB方案)
 aws logs tail /ecs/clickstream-cluster --follow
+
+# ECS容器日志 (ALB方案)
+aws logs tail /ecs/clickstream-alb-cluster --follow
 
 # MSK连接器日志
 aws logs tail /aws/mskconnect/connector-name --follow
@@ -386,12 +523,7 @@ aws cloudformation describe-stack-events --stack-name your-stack
 
 要删除部署的资源，需要按相反顺序进行：
 
-1. 删除MSK连接器
-2. 删除ECS服务和任务定义
-3. 删除NLB和目标组
-4. 删除ECR镜像
-5. 清理S3存储桶（可选）
-
+### NLB 方案清理
 ```bash
 # 删除ECS服务
 aws ecs update-service \
@@ -403,11 +535,54 @@ aws ecs delete-service \
   --cluster clickstream-cluster \
   --service clickstream-optimized-service
 
+# 删除NLB
+aws elbv2 delete-load-balancer \
+  --load-balancer-arn <nlb-arn>
+```
+
+### ALB 方案清理
+```bash
+# 删除ECS服务
+aws ecs update-service \
+  --cluster clickstream-alb-cluster \
+  --service clickstream-alb-optimized-service \
+  --desired-count 0
+
+aws ecs delete-service \
+  --cluster clickstream-alb-cluster \
+  --service clickstream-alb-optimized-service
+
+# 删除ALB
+aws elbv2 delete-load-balancer \
+  --load-balancer-arn <alb-arn>
+```
+
+### 共同清理步骤
+```bash
 # 删除MSK连接器
 aws kafkaconnect delete-connector --connector-arn <connector-arn>
+
+# 清理ECR镜像
+aws ecr delete-repository --repository-name <image-name> --force
 ```
 
 ## 成本优化建议
+
+### 方案选择建议
+
+1. **选择NLB方案的情况**：
+   - 需要极高的性能和低延迟
+   - 流量模式相对简单
+   - 成本敏感的场景
+   - 主要处理TCP/UDP流量
+
+2. **选择ALB方案的情况**：
+   - 需要丰富的HTTP路由功能
+   - 需要详细的应用层监控
+   - 需要SSL终止功能
+   - 流量模式复杂，需要基于内容的路由
+
+### 通用优化建议
 
 1. **ECS任务数量**：根据实际负载调整`desired-count`
 2. **MSK实例类型**：选择合适的实例类型和数量
@@ -420,30 +595,45 @@ aws kafkaconnect delete-connector --connector-arn <connector-arn>
 2. **IAM权限**：遵循最小权限原则
 3. **数据加密**：启用S3和MSK的加密
 4. **访问控制**：使用安全组限制网络访问
+5. **ALB安全**：配置WAF和SSL证书（如需要）
 
 ## 监控和告警
 
 建议设置以下监控指标：
 
+### 通用监控
 - ECS任务健康状态
-- NLB目标健康状态
 - MSK集群指标
 - MSK连接器状态
 - S3存储使用量
+
+### NLB方案监控
+- NLB目标健康状态
+- NLB连接数和流量
+
+### ALB方案监控
+- ALB目标健康状态
+- ALB请求数和响应时间
+- HTTP错误率
 
 ## 扩展和定制
 
 ### 自定义配置
 
+#### NLB方案
 - 修改Nginx配置：编辑`src/ingestion/nlb-nginx-lua/docker/nginx-for-lua/`下的配置文件
 - 调整Fluent Bit配置：修改`src/ingestion/nlb-nginx-lua/docker/fluent-bit/`下的配置
-- 自定义Iceberg表结构：修改连接器配置
+
+#### ALB方案
+- 修改Nginx配置：编辑`src/ingestion/alb-nginx-vector/docker/nginx/`下的配置文件
+- 调整Vector配置：修改`src/ingestion/alb-nginx-vector/docker/vector/`下的配置
 
 ### 性能调优
 
 - 调整Kafka分区数量
 - 优化ECS任务资源配置
 - 调整MSK连接器并发度
+- 根据方案特点调整负载均衡器配置
 
 ## 支持和贡献
 
@@ -452,12 +642,13 @@ aws kafkaconnect delete-connector --connector-arn <connector-arn>
 1. 检查本文档的故障排除部分
 2. 查看生成的信息文件
 3. 检查AWS服务控制台中的状态
+4. 根据选择的方案查看对应的组件文档
 
 ## 版本历史
 
-- v1.0: 初始版本，支持基本的点击流数据湖功能
-- 包含NLB、ECS、MSK、Iceberg连接器的完整部署
+- v1.0: 初始版本，支持NLB + Nginx + Fluent Bit方案
+- v1.1: 添加ALB + Nginx + Vector方案支持，提供双方案选择
 
 ---
 
-**注意**: 本解决方案会产生AWS费用，请根据实际需求调整资源配置，并及时清理不需要的资源。
+**注意**: 本解决方案会产生AWS费用，请根据实际需求选择合适的方案并调整资源配置，及时清理不需要的资源。不同方案的成本结构有所不同，请在选择前评估成本影响。

@@ -12,13 +12,13 @@ ENV WORKER_THREADS_NUM='-1'
 COPY ./config/vector*.toml /etc/vector/
 COPY ./config/entrypoint.sh /
 
-RUN groupadd -r vector && useradd -r -g vector vector
+# RUN groupadd -r vector && useradd -r -g vector vector
 
-RUN chown vector /entrypoint.sh \
-    && chown -R vector /etc/vector \
-    && chown -R vector /var/lib/vector
+# RUN chown vector /entrypoint.sh \
+#     && chown -R vector /etc/vector \
+#     && chown -R vector /var/lib/vector
 RUN chmod u+x /entrypoint.sh && chmod u+wr /etc/vector/*.toml
 
-USER vector
+# USER vector
 
 ENTRYPOINT [ "/entrypoint.sh" ]

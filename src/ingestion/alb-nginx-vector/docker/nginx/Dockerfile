@@ -2,7 +2,7 @@ ARG PLATFORM_ARG
 FROM --platform=$PLATFORM_ARG public.ecr.aws/docker/library/nginx:1.27
 
 # default nginx path
-ENV SERVER_ENDPOINT_PATH='/collect'
+ENV SERVER_ENDPOINT_PATH='/data/v1'
 ENV PING_ENDPOINT_PATH='/ping'
 ENV SERVER_CORS_ORIGIN='*'
 ENV NGINX_WORKER_CONNECTIONS='1024'
@@ -23,6 +23,6 @@ RUN chmod u+x ./docker-entrypoint.sh && chmod u+rw /etc/nginx/nginx.conf
 USER nginx
 
 HEALTHCHECK --interval=2m --timeout=5s \
-  CMD curl -f http://127.0.0.1:8088/health || exit 1
+  CMD curl -f http://127.0.0.1:8802/health || exit 1
 
-EXPOSE 8088
+EXPOSE 8802
