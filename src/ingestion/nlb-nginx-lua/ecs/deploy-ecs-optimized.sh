@@ -8,7 +8,7 @@ DEFAULT_CLUSTER_NAME="clickstream-cluster"
 DEFAULT_TASK_FAMILY="clickstream-task-optimized"
 DEFAULT_SERVICE_NAME="clickstream-optimized-service"
 DEFAULT_DESIRED_COUNT=4
-DEFAULT_EBS_SIZE=500
+DEFAULT_EBS_SIZE=50
 
 # Initialize variables
 REGION=""
@@ -610,8 +610,8 @@ generate_service_definition() {
       "managedEBSVolume": {
         "sizeInGiB": $EBS_SIZE,
         "volumeType": "gp3",
-        "iops": 16000,
-        "throughput": 1000,
+        "iops": 3000,
+        "throughput": 125,
         "filesystemType": "ext4",
         "roleArn": "$infra_role_arn"
       }
