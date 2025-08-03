@@ -1,0 +1,38 @@
+# Kiro directory
+.kiro/
+
+# ALB Nginx Vector temporary files
+src/ingestion/alb-nginx-vector/tmp/
+
+# Common temporary and build files
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# AWS credentials (safety measure)
+.aws/
+credentials
+config
+
+# Docker build context
+.dockerignore
+
+# Backup files
+*.bak
+*.backup
