@@ -1,0 +1,50 @@
+{
+    "execution_info": {
+        "status": "FAILED",
+        "timestamp": "2025-08-03T02:51:52Z",
+        "error_message": "S3 bucket 'test-bucket' does not exist or is not accessible in region us-east-1",
+        "script_version": "optimized"
+    },
+    "connector_info": {
+        "connector_name": "msk-s3-sink-json",
+        "connector_arn": "",
+        "connector_type": "S3 JSON Sink",
+        "region": "us-east-1"
+    },
+    "msk_info": {
+        "cluster_name": "test-cluster",
+        "cluster_arn": "",
+        "bootstrap_servers": "",
+        "topic_name": "app_logs"
+    },
+    "plugin_info": {
+        "plugin_name": "msk-s3-sink-plugin",
+        "plugin_arn": "",
+        "plugin_s3_location": "s3://test-bucket/plugins/confluentinc-kafka-connect-s3-10.6.7.zip",
+        "plugin_version": "10.6.7"
+    },
+    "capacity_info": {
+        "worker_count": 6,
+        "mcu_count": 1,
+        "max_tasks": 3
+    },
+    "storage_info": {
+        "s3_bucket": "test-bucket",
+        "data_location": "s3://test-bucket/app-logs-json/",
+        "partition_format": "year=yyyy/month=MM/day=dd/hour=HH",
+        "partition_time_column": "ingestion_time"
+    },
+    "iam_info": {
+        "service_role_name": "",
+        "service_role_arn": ""
+    },
+    "worker_config_info": {
+        "worker_config_name": "",
+        "worker_config_arn": ""
+    },
+    "monitoring_info": {
+        "cloudwatch_log_group": "msk-connector-log",
+        "flush_size": "1000",
+        "rotate_interval_ms": "60000"
+    }
+}

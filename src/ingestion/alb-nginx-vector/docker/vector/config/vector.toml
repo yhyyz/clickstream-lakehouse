@@ -1,0 +1,44 @@
+[sources.nginx_http_post]
+type = "http_server"
+address = "0.0.0.0:8685"
+strict_path = false
+headers = [ "X_Uri", "X_User_Agent", "X_Forwarded_For", "X_Date", "X_Request_ID", "X_Method", "project"]
+query_parameters = [ "platform", "fakeIp"]
+method = "POST"
+encoding = "binary"
+
+[transforms.json_parser]
+inputs = ["nginx_http_post"]
+type   = "remap"
+source = '''
+.meta = {}
+.meta.date = del(.X_Date)
+.meta.uri = del(.X_Uri)
+.meta.ua = del(.X_User_Agent)
+if (get_env_var("DEV_MODE") ?? "No") == "Yes" && !is_null(.fakeIp) {
+  .meta.ip = del(.fakeIp)
+} else {
+  .meta.ip = del(.X_Forwarded_For)
+  del(.fakeIp)
+}
+.meta.rid = del(.X_Request_ID)
+.meta.method = del(.X_Method)
+.meta.platform = del(.platform)
+.meta.project = del(.project)
+.meta.ctime = to_unix_timestamp(now()) * 1000
+
+parsed_data, parse_err = parse_json(.message)
+if parse_err == null {
+  .data = parsed_data
+  .meta.parse_status = "success"
+  .meta.raw = ""
+} else {
+  .data = {}
+  .meta.parse_status = "failed"
+  .meta.raw = .message
+}
+del(.message)
+del(.path)
+del(.source_type)
+del(.timestamp)
+'''

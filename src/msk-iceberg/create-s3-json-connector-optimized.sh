@@ -11,6 +11,7 @@ DEFAULT_REGION="us-east-1"
 DEFAULT_TOPIC_NAME="app_logs"
 DEFAULT_WORKER_COUNT=6
 DEFAULT_MCU_COUNT=1
+DEFAULT_PARTITION_TIME_COL="ingestion_time"
 FORCE_RECREATE=false
 
 # Global variables for tracking execution
@@ -76,7 +77,8 @@ generate_info_file() {
     "storage_info": {
         "s3_bucket": "${S3_BUCKET:-}",
         "data_location": "s3://${S3_BUCKET:-}/app-logs-json/",
-        "partition_format": "year=yyyy/month=MM/day=dd/hour=HH"
+        "partition_format": "year=yyyy/month=MM/day=dd/hour=HH",
+        "partition_time_column": "${PARTITION_TIME_COL:-ingestion_time}"
     },
     "iam_info": {
         "service_role_name": "${ROLE_NAME:-}",
@@ -114,13 +116,14 @@ OPTIONS:
     -t, --topic TOPIC          Kafka topic name (default: $DEFAULT_TOPIC_NAME)
     -w, --workers COUNT        Number of workers (default: $DEFAULT_WORKER_COUNT)
     -m, --mcu COUNT           MCU count (default: $DEFAULT_MCU_COUNT)
+    -p, --partition-time-col COL  Partition time column (ingestion_time|kafka_time, default: $DEFAULT_PARTITION_TIME_COL)
     -f, --force               Force recreate existing resources
     -h, --help                Show this help message
 
 EXAMPLES:
     $0 my-bucket my-msk-cluster
     $0 --region ap-southeast-1 --topic logs my-bucket my-cluster
-    $0 --force --workers 4 my-bucket my-cluster
+    $0 --force --workers 4 --partition-time-col kafka_time my-bucket my-cluster
 
 OUTPUT:
     Creates an info file: msk-s3-json-connector-info.json with connector details
@@ -150,6 +153,15 @@ while [[ $# -gt 0 ]]; do
             MCU_COUNT="$2"
             shift 2
             ;;
+        -p|--partition-time-col)
+            PARTITION_TIME_COL="$2"
+            # Validate the parameter value
+            if [[ "$PARTITION_TIME_COL" != "ingestion_time" && "$PARTITION_TIME_COL" != "kafka_time" ]]; then
+                echo "Error: partition-time-col must be either 'ingestion_time' or 'kafka_time'"
+                exit 1
+            fi
+            shift 2
+            ;;
         -f|--force)
             FORCE_RECREATE=true
             shift
@@ -170,6 +182,7 @@ REGION=${REGION:-$DEFAULT_REGION}
 TOPIC_NAME=${TOPIC_NAME:-$DEFAULT_TOPIC_NAME}
 WORKER_COUNT=${WORKER_COUNT:-$DEFAULT_WORKER_COUNT}
 MCU_COUNT=${MCU_COUNT:-$DEFAULT_MCU_COUNT}
+PARTITION_TIME_COL=${PARTITION_TIME_COL:-$DEFAULT_PARTITION_TIME_COL}
 
 # Check required parameters
 if [ $# -lt 2 ]; then
@@ -193,6 +206,7 @@ echo "MSK Cluster Name: $MSK_CLUSTER_NAME"
 echo "Topic: $TOPIC_NAME"
 echo "Workers: $WORKER_COUNT"
 echo "MCU Count: $MCU_COUNT"
+echo "Partition Time Column: $PARTITION_TIME_COL"
 echo "Force Recreate: $FORCE_RECREATE"
 echo "============================================"
 
@@ -491,8 +505,85 @@ CONNECTOR_ARN=$(aws kafkaconnect list-connectors --region $REGION --query "conne
 if [ -z "$CONNECTOR_ARN" ] || [ "$CONNECTOR_ARN" = "None" ]; then
     echo "Creating S3 JSON connector: $CONNECTOR_NAME"
     
-    # Create connector configuration
-    cat > connector-config.json << EOF
+    # Create connector configuration based on partition-time-col parameter
+    if [ "$PARTITION_TIME_COL" = "kafka_time" ]; then
+        # For kafka_time: use Record timestamp extractor without timestamp.field
+        cat > connector-config.json << EOF
+{
+    "connectorName": "$CONNECTOR_NAME",
+    "kafkaCluster": {
+        "apacheKafkaCluster": {
+            "bootstrapServers": "$MSK_BOOTSTRAP_SERVERS",
+            "vpc": {
+                "securityGroups": $SG_JSON,
+                "subnets": $SUBNET_JSON
+            }
+        }
+    },
+    "kafkaClusterClientAuthentication": {
+        "authenticationType": "NONE"
+    },
+    "kafkaClusterEncryptionInTransit": {
+        "encryptionType": "PLAINTEXT"
+    },
+    "kafkaConnectVersion": "3.7.x",
+    "serviceExecutionRoleArn": "$ROLE_ARN",
+    "plugins": [
+        {
+            "customPlugin": {
+                "customPluginArn": "$PLUGIN_ARN",
+                "revision": 1
+            }
+        }
+    ],
+    "workerConfiguration": {
+        "workerConfigurationArn": "$WORKER_CONFIG_ARN",
+        "revision": 1
+    },
+    "capacity": {
+        "provisionedCapacity": {
+            "mcuCount": $MCU_COUNT,
+            "workerCount": $WORKER_COUNT
+        }
+    },
+    "connectorConfiguration": {
+        "connector.class": "io.confluent.connect.s3.S3SinkConnector",
+        "s3.region": "$REGION",
+        "topics.dir": "app-logs-json-data-v1",
+        "flush.size": "60000",
+        "tasks.max": "3",
+        "timezone": "America/New_York",
+        "rotate.interval.ms": "120000",
+        "locale": "zh_CN",
+        "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "errors.log.enable": "true",
+        "s3.bucket.name": "$S3_BUCKET",
+        "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+        "partition.duration.ms": "86400000",
+        "schema.compatibility": "NONE",
+        "file.delim": "-",
+        "topics": "$TOPIC_NAME",
+        "s3.compression.type": "gzip",
+        "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
+        "value.converter.schemas.enable": "false",
+        "storage.class": "io.confluent.connect.s3.storage.S3Storage",
+        "path.format": "YYYYMMdd",
+        "timestamp.extractor": "Record"
+    },
+    "logDelivery": {
+        "workerLogDelivery": {
+            "cloudWatchLogs": {
+                "enabled": true,
+                "logGroup": "msk-connector-log"
+            }
+        }
+    }
+}
+EOF
+    else
+        # For ingestion_time: use RecordField timestamp extractor with timestamp.field
+        cat > connector-config.json << EOF
 {
     "connectorName": "$CONNECTOR_NAME",
     "kafkaCluster": {
@@ -566,6 +657,7 @@ if [ -z "$CONNECTOR_ARN" ] || [ "$CONNECTOR_ARN" = "None" ]; then
     }
 }
 EOF
+    fi
 
     # Create the connector
     if aws kafkaconnect create-connector --cli-input-json file://connector-config.json --region $REGION; then
@@ -596,6 +688,7 @@ echo "Connector ARN: ${CONNECTOR_ARN:-Not available}"
 echo "Plugin S3 Location: s3://$S3_BUCKET/${PLUGIN_S3_KEY:-plugins/confluentinc-kafka-connect-s3-10.6.7.zip}"
 echo "Worker Count: ${WORKER_COUNT:-6}"
 echo "MCU Count: ${MCU_COUNT:-1}"
+echo "Partition Time Column: ${PARTITION_TIME_COL:-ingestion_time}"
 echo "Data Location: s3://$S3_BUCKET/app-logs-json/"
 echo "Format: JSON (gzipped)"
 echo ""
