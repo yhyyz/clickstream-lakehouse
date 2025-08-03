@@ -257,6 +257,10 @@ get_msk_bootstrap_servers() {
 
 # 主部署函数
 main() {
+    # 保存脚本根目录
+    SCRIPT_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    echo "脚本根目录: $SCRIPT_ROOT_DIR"
+    
     # 设置默认值
     REGION="${REGION:-$DEFAULT_REGION}"
     GLUE_DATABASE="${GLUE_DATABASE:-$DEFAULT_GLUE_DATABASE}"
@@ -318,7 +322,7 @@ main() {
     # 阶段1: 构建Docker镜像
     if [[ "$DEPLOY_DOCKER" == "true" ]]; then
         execute_command \
-            "cd src/ingestion/alb-nginx-vector/docker && ./build-all-images.sh --region $REGION" \
+            "cd $SCRIPT_ROOT_DIR/src/ingestion/alb-nginx-vector/docker && ./build-all-images.sh --region $REGION" \
             "构建Docker镜像 (Nginx + Vector)"
     fi
     
@@ -330,35 +334,35 @@ main() {
         fi
         
         execute_command \
-            "cd src/ingestion/alb-nginx-vector/ecs && ./deploy-ecs-optimized.sh --region $REGION --vpc $VPC_ID --desired-count $DESIRED_COUNT --kafka-broker-host $KAFKA_BROKER_HOST" \
+            "cd $SCRIPT_ROOT_DIR/src/ingestion/alb-nginx-vector/ecs && ./deploy-ecs-optimized.sh --region $REGION --vpc $VPC_ID --desired-count $DESIRED_COUNT --kafka-broker-host $KAFKA_BROKER_HOST" \
             "部署ECS服务 (ALB + Nginx + Vector)"
     fi
     
     # 阶段3: 部署ALB
     if [[ "$DEPLOY_ALB" == "true" ]]; then
         execute_command \
-            "cd src/ingestion/alb-nginx-vector/alb && ./deploy-alb-optimized.sh --region $REGION --vpc $VPC_ID" \
+            "cd $SCRIPT_ROOT_DIR/src/ingestion/alb-nginx-vector/alb && ./deploy-alb-optimized.sh --region $REGION --vpc $VPC_ID" \
             "部署应用负载均衡器 (ALB)"
     fi
     
     # 阶段4: 创建MSK主题
     if [[ "$DEPLOY_MSK_TOPICS" == "true" ]]; then
         execute_command \
-            "cd src/msk-iceberg && ./create-msk-topics.sh --region $REGION --cluster-name $MSK_CLUSTER_NAME" \
+            "cd $SCRIPT_ROOT_DIR/src/msk-iceberg && ./create-msk-topics.sh --region $REGION --cluster-name $MSK_CLUSTER_NAME" \
             "创建MSK主题"
     fi
     
     # 阶段5: 创建Iceberg连接器
     if [[ "$DEPLOY_ICEBERG_CONNECTOR" == "true" ]]; then
         execute_command \
-            "cd src/msk-iceberg && ./create-s3-iceberg-connector-optimized.sh $S3_BUCKET $MSK_CLUSTER_NAME" \
+            "cd $SCRIPT_ROOT_DIR/src/msk-iceberg && ./create-s3-iceberg-connector-optimized.sh $S3_BUCKET $MSK_CLUSTER_NAME" \
             "创建Iceberg连接器"
     fi
     
     # 阶段6: 创建S3连接器
     if [[ "$DEPLOY_S3_CONNECTOR" == "true" ]]; then
         execute_command \
-            "cd src/msk-iceberg && ./create-s3-json-connector-optimized.sh $S3_BUCKET $MSK_CLUSTER_NAME" \
+            "cd $SCRIPT_ROOT_DIR/src/msk-iceberg && ./create-s3-json-connector-optimized.sh $S3_BUCKET $MSK_CLUSTER_NAME" \
             "创建S3 JSON连接器"
     fi
     
@@ -368,12 +372,12 @@ main() {
     echo "数据链路已建立: ALB -> ECS -> MSK -> Iceberg/S3"
     echo ""
     echo "生成的信息文件:"
-    echo "  - src/ingestion/alb-nginx-vector/tmp/docker-images-info.json"
-    echo "  - src/ingestion/alb-nginx-vector/tmp/ecs-service-info.json"
-    echo "  - src/ingestion/alb-nginx-vector/tmp/alb-info.json"
-    echo "  - src/msk-iceberg/msk-topics-info.json"
-    echo "  - src/msk-iceberg/msk-iceberg-connector-info.json"
-    echo "  - src/msk-iceberg/msk-s3-json-connector-info.json"
+    echo "  - $SCRIPT_ROOT_DIR/src/ingestion/alb-nginx-vector/tmp/docker-images-info.json"
+    echo "  - $SCRIPT_ROOT_DIR/src/ingestion/alb-nginx-vector/tmp/ecs-service-info.json"
+    echo "  - $SCRIPT_ROOT_DIR/src/ingestion/alb-nginx-vector/tmp/alb-info.json"
+    echo "  - $SCRIPT_ROOT_DIR/src/msk-iceberg/msk-topics-info.json"
+    echo "  - $SCRIPT_ROOT_DIR/src/msk-iceberg/msk-iceberg-connector-info.json"
+    echo "  - $SCRIPT_ROOT_DIR/src/msk-iceberg/msk-s3-json-connector-info.json"
     echo ""
     echo "请检查各个组件的状态，确保部署成功。"
 }

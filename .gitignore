@@ -4,6 +4,9 @@
 # ALB Nginx Vector temporary files
 src/ingestion/alb-nginx-vector/tmp/
 
+src/msk-iceberg/*.json
+src/ingestion/alb-nginx-vector/tmp/*.json
+
 # Common temporary and build files
 *.log
 *.tmp
