@@ -1,7 +1,0 @@
-{
-  "nginx_image_uri": "305996241648.dkr.ecr.us-east-1.amazonaws.com/clickstream-nginx-vector-optimized:latest",
-  "vector_image_uri": "305996241648.dkr.ecr.us-east-1.amazonaws.com/clickstream-vector-optimized:latest",
-  "region": "us-east-1",
-  "account_id": "305996241648",
-  "build_time": "2025-08-02T17:05:32Z"
-}
