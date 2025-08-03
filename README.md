@@ -3,6 +3,8 @@
 这是一个基于AWS服务构建的完整点击流数据湖解决方案，支持实时数据采集、流式处理和数据湖存储。项目提供两种不同的部署方案以满足不同的性能和功能需求。
 
 ## 架构概览
+### 架构图
+![architecture_image](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202508031811147.png)
 
 ### 方案一：NLB + Nginx + Fluent Bit (高性能方案)
 ```
@@ -19,9 +21,9 @@
 | 特性 | NLB + Nginx + Fluent Bit | ALB + Nginx + Vector |
 |------|---------------------------|----------------------|
 | **负载均衡器类型** | 网络负载均衡器 (Layer 4) | 应用负载均衡器 (Layer 7) |
-| **性能** | 更高性能，更低延迟 | 中等性能，适中延迟 |
-| **成本** | 相对较低 | 相对较高 |
-| **MSK(kafka)宕机后的容灾** | NGINX日志限制单条数据不能超过4KB，超过会截断，宕机后写EBS,Fluent Bit发送到S3 | 宕机后Vector会一直写EBS，MSK恢复后，Vector继续将EBS积压数据发送到kafka |
+| **性能** | 更高性能，更低延迟 | 差距不大 |
+| **成本** | 相对较低 | 一般 |
+| **MSK(kafka)宕机后的容灾** | NGINX日志限制单条数据不能超过4KB，超过会截断，宕机后写EBS,Fluent Bit发送到S3 | 宕机后Vector会一直写EBS buffer，MSK恢复后，Vector继续将EBS积压数据发送到kafka|
 
 * 关于MSK宕机容灾的说明
 
@@ -34,6 +36,7 @@ B. kafka宕机后，通过下面代码，写数据到本地盘，然后由sideca
 C. 不使用当前方式写kafka, 数据先写磁盘，所有数据通过fluent-bit上传到s3，只要磁盘不故障，基本不会丢数据。需要配置一个大的磁盘防止kafka宕机，磁盘写满
 D. 使用nginx+vector http ,vector支持数据先缓存在磁盘，如果kafka宕机，数据写磁盘，恢复了之后再发送, 依然。需要配置一个大的磁盘防止kafka宕机，磁盘写满
 ```
+
 
 ### 数据链路说明
 
