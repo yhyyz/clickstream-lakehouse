@@ -4,11 +4,14 @@
 type = "kafka"
 inputs =  ["json_parser"]   
 bootstrap_servers = "%%AWS_MSK_BROKERS%%"
-#key_field = "ip"
+key_field = "meta.ctime"
 topic = "%%AWS_MSK_TOPIC%%"
 compression = "none"
-batch.max_events = 1000
+batch.max_events = 5000
 batch.timeout_secs = 3
+buffer.type = "disk"
+buffer.max_size = 107374182400
+buffer.when_full = "block"
 acknowledgements.enabled = false
   [sinks.msk_sink.encoding]
   codec = "json"
