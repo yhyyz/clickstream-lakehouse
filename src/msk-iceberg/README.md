@@ -61,7 +61,7 @@ bs="xxxx:9092"
 ```
 
 ### 2. 创建Iceberg连接器
-
+* 下面两个参数是必选的， 更多参数支持可以直接执行脚本 --help 查看， 比如默认分区时间字段，是ecs服务器收到消息的时间，如果想要使用Kafka中的每条记录元数据时间(当生产者写数据到Kafak, kafka自己有元数据记录这条数据的时间)，可以指定 -p 参数选择。
 ```bash
 # 创建Iceberg连接器用于实时数据湖
 ./create-s3-iceberg-connector-optimized.sh <s3-bucket> <msk-cluster-name>
