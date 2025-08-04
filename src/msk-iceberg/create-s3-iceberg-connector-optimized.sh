@@ -551,8 +551,8 @@ if [ -z "$CONNECTOR_ARN" ] || [ "$CONNECTOR_ARN" = "None" ]; then
         # Use kafka_time: add insertTS transform, remove timestampConverter
         TRANSFORMS_CONFIG='"transforms": "insertTS,flatten",'
         INSERTTS_CONFIG='"transforms.insertTS.type": "org.apache.kafka.connect.transforms.InsertField$Value",
-        "transforms.insertTS.timestamp.field": "messageTS",'
-        "iceberg.tables.default-partition-by": "day(messageTS)",
+        "transforms.insertTS.timestamp.field": "messageTS",
+        "iceberg.tables.default-partition-by": "day(messageTS)",'
         TIMESTAMP_CONVERTER_CONFIG=""
         echo "Using kafka_time configuration: insertTS transform enabled, timestampConverter disabled"
     else
