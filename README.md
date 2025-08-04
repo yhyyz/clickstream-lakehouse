@@ -4,7 +4,7 @@
 
 ## 架构概览
 ### 架构图
-![architecture_image](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202508031811147.png)
+![architecture_image](https://pcmyp.oss-cn-beijing.aliyuncs.com/markdown/202508031833878.png)
 
 ### 方案一：NLB + Nginx + Fluent Bit (高性能方案)
 ```
@@ -98,8 +98,8 @@ clickstream-lakehouse/
 2. **Docker** 已安装并运行
 
 3. **已创建的AWS资源**：
-   - VPC和私有子网（ALB方案还需要公有子网）
-   - MSK集群（已运行状态）
+   - VPC和公有和私有子网（本项目vpc最佳实践，公有子网+私有子网+NAT, 除了ALB和NLB部署在公有子网，其它服务都会自动在私有子网创建，MSK集群你需要自己创建，创建的时候请选择私有子网， 开放9092 PLAINTEXT访问）
+   - MSK集群（已运行状态，请选择私有子网）
    - S3存储桶（用于数据存储）
 
 ### 本地环境
@@ -288,6 +288,8 @@ cd src/msk-iceberg
 ```
 
 #### 5. 创建Iceberg连接器
+* 下面两个参数是必选的， 更多参数支持可以直接执行脚本 --help 查看， 比如默认分区时间字段，是ecs服务器收到消息的时间，如果想要使用Kafka中的每条记录元数据时间(当生产者写数据到Kafak, kafka自己有元数据记录这条数据的时间)，可以指定 -p 参数选择。
+
 ```bash
 cd src/msk-iceberg
 ./create-s3-iceberg-connector-optimized.sh my-bucket my-msk-cluster
