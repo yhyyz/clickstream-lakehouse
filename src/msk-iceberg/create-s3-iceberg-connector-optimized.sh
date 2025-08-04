@@ -549,12 +549,15 @@ if [ -z "$CONNECTOR_ARN" ] || [ "$CONNECTOR_ARN" = "None" ]; then
     # Configure transforms based on partition_time_col parameter
     if [ "$PARTITION_TIME_COL" = "kafka_time" ]; then
         # Use kafka_time: add insertTS transform, remove timestampConverter
-        TRANSFORMS_CONFIG='"transforms": "insertTS,flatten",'
+        TRANSFORMS_CONFIG='"transforms": "insertTS,flatten,timestampConverter",'
         INSERTTS_CONFIG='"transforms.insertTS.type": "org.apache.kafka.connect.transforms.InsertField$Value",
         "transforms.insertTS.timestamp.field": "messageTS",
         "iceberg.tables.default-partition-by": "day(messageTS)",'
-        TIMESTAMP_CONVERTER_CONFIG=""
-        echo "Using kafka_time configuration: insertTS transform enabled, timestampConverter disabled"
+        TIMESTAMP_CONVERTER_CONFIG='"transforms.timestampConverter.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+        "transforms.timestampConverter.target.type": "Timestamp",
+        "transforms.timestampConverter.field": "messageTS",
+        "transforms.timestampConverter.unix.precision": "milliseconds",'
+        echo "Using kafka_time configuration: insertTS transform enabled, timestampConverter enable(messageTS default bigint convert to timestamp)"
     else
         # Use ingestion_time (default): keep original configuration
         TRANSFORMS_CONFIG='"transforms": "insertTS,flatten,timestampConverter",'
