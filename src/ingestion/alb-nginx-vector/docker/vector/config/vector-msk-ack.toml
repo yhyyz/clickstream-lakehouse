@@ -4,7 +4,7 @@
 type = "kafka"
 inputs =  ["json_parser"]   
 bootstrap_servers = "%%AWS_MSK_BROKERS%%"
-#key_field = "ip"
+key_field = "meta.ctime"
 topic = "%%AWS_MSK_TOPIC%%"
 compression = "none"
 acknowledgements.enabled = true
