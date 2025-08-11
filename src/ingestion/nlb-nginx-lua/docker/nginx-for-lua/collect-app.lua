@@ -1,6 +1,7 @@
 local cjson = require "cjson"
 local client = require "resty.kafka.client"
 local producer = require "resty.kafka.producer"
+local zlib = require("zlib")
 
 -- 如果kafa宕机ECS重新部署一下走如下逻辑不在连kafka. 之所以不在error_handle中控制，因为异步发送kafka如果遇到kafka宕机，还是要不断请求metadata，看kafka是否ready, 这个性能就会下降，
 -- 因为请求metadata要经过socket_timeout超时时间，这个超时间即便设置的再短每条数据都会发一次请求看metadata是否ok, kafka是否恢复，会影响请求的性能，所以当前想在kafka宕机时自动的将错误
@@ -68,7 +69,6 @@ local producer_config = {
 ngx.req.read_body()
 -- 请求体信息存放到 body_data变量中
 local body_data = ngx.req.get_body_data()
-local project = ngx.req.get_headers()["project"]
 -- 如果请求体为空，返回错误
 if body_data == nil  then
   ngx.say('{"code":500,"data":"req body nil"}')
@@ -85,6 +85,7 @@ if not project then
   ngx.say('{"code":500,"data":"header need project key"}')
   return
 end
+
 -- 定义一个字典，存放有当前服务为日志增加的信息，如ctime表示接受到请求的时间，ip地址等
 local data={}
 data["project"] = project
@@ -94,6 +95,13 @@ if ngx.var.http_x_forwarded_for == nil then
 else
   data["ip"] = ngx.var.http_x_forwarded_for
 end
+
+data["uri"] = ngx.var.request_uri
+data["ua"] = ngx.var.http_user_agent
+data["date"] = ngx.var.time_iso8601
+data["rid"] = ngx.var.request_id
+data["method"] = ngx.var.request_method
+
 -- 将增加的信息编码为json
 local meta = cjson.encode(data)
 -- 先对请求数据进行base64解码
@@ -101,6 +109,13 @@ local decoded_body_data = ngx.decode_base64(ngx.unescape_uri(body_data))
 if decoded_body_data == nil then
   ngx.say('{"code":500,"data":"base64 decode failed"}')
   return
+end
+
+-- 从请求头获取是否是gzip压缩,请求头有'compression: gzip'标示是gzip压缩，会对数据进行解压
+local compression = headers["compression"] or ngx.var.arg_compression
+local stream = zlib.inflate()
+if compression == "gzip" then
+  decoded_body_data = stream(decoded_body_data)
 end
 
 local success, decoded_body_json_data = pcall(cjson.decode, decoded_body_data)
@@ -112,9 +127,15 @@ end
 -- 创建包含meta和data的JSON对象
 local combined_json = {}
 combined_json["meta"] = data
-combined_json["data"] = decoded_body_json_data
--- 将JSON对象编码为字符串
+if type(decoded_body_json_data) == "table" and decoded_body_json_data[1] ~= nil then
+  -- 既是table类型，又有第1个元素 -> 是数组
+  combined_json["data_list"] = decoded_body_json_data
+else
+  combined_json["data"] = decoded_body_json_data
+end
+  -- 将JSON对象编码为字符串
 local combined_data = cjson.encode(combined_json)
+
 if send_s3_only == "enable" then
     ngx.log(ngx.ERR, combined_data)
     ngx.say('{"code":200,"data":true}')

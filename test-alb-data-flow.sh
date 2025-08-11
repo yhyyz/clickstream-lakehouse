@@ -19,6 +19,7 @@ show_help() {
     -p, --project PROJECT        项目名称/MSK主题名称 (默认: $DEFAULT_PROJECT)
     -c, --count COUNT            发送测试消息数量 (默认: $DEFAULT_COUNT)
     -i, --interval INTERVAL      消息发送间隔(秒) (默认: $DEFAULT_INTERVAL)
+    -b, --batch_send             客户端batch发送 (默认: false)   
     -v, --verbose                显示详细的响应信息
     -h, --help                   显示此帮助信息
 
@@ -38,7 +39,7 @@ PROJECT="$DEFAULT_PROJECT"
 COUNT="$DEFAULT_COUNT"
 INTERVAL="$DEFAULT_INTERVAL"
 VERBOSE=false
-
+BATCH_SEND=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         -r|--region)
@@ -59,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -i|--interval)
             INTERVAL="$2"
+            shift 2
+            ;;
+        -b|--batch_send)
+            BATCH_SEND=true
             shift 2
             ;;
         -v|--verbose)
@@ -112,10 +117,66 @@ FAILED_COUNT=0
 for ((i=1; i<=COUNT; i++)); do
     # 生成测试数据
     TEST_DATA=$(cat << EOF
-{"event":"page_view","user_id":"test_user_$i","session_id":"session_$(date +%s)","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","page_url":"https://example.com/page$i","user_agent":"TestAgent/1.0","ip_address":"192.168.1.$((i % 255 + 1))","referrer":"https://example.com/","properties":{"page_title":"Test Page $i","category":"test","test_run":true}}
+{
+    "event": "page_view",
+    "user_id": "$USER_ID",
+    "session_id": "$SESSION_ID",
+    "timestamp": "$TIMESTAMP",
+    "page_url": "https://example.com/page$i",
+    "referrer": "https://example.com/home",
+    "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+    "ip_address": "192.168.1.$((i % 255 + 1))",
+    "properties": {
+        "page_title": "Test Page $i",
+        "category": "test",
+        "test_batch": "nlb_test_$(date +%s)"
+    }
+}
 EOF
-)
+    )
 
+    TEST_DATA_LIST=$(cat << EOF
+[
+{
+    "event": "page_view",
+    "user_id": "$USER_ID",
+    "session_id": "$SESSION_ID",
+    "timestamp": "$TIMESTAMP",
+    "page_url": "https://example.com/page$i",
+    "referrer": "https://example.com/home",
+    "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+    "ip_address": "192.168.1.$((i % 255 + 1))",
+    "properties": {
+        "page_title": "Test Page $i",
+        "category": "test",
+        "test_batch": "nlb_test_$(date +%s)"
+    }
+},
+{
+    "event": "page_view",
+    "user_id": "$USER_ID",
+    "session_id": "$SESSION_ID",
+    "timestamp": "$TIMESTAMP",
+    "page_url": "https://example.com/page$i",
+    "referrer": "https://example.com/home",
+    "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+    "ip_address": "192.168.1.$((i % 255 + 1))",
+    "properties": {
+        "page_title": "Test Page $i",
+        "category": "test",
+        "test_batch": "nlb_test_$(date +%s)"
+    }
+}
+]
+EOF
+    )
+
+    # gzip + Base64编码
+    if [[ "$BATCH_SEND" == "true" ]]; then
+        ENCODED_DATA=$(echo -n "$TEST_DATA" |gzip| base64 -w 0)
+    else
+        ENCODED_DATA=$(echo -n "$TEST_DATA_LIST" |gzip| base64 -w 0) 
+    fi
     # 发送请求
     echo -n "发送消息 $i/$COUNT... "
     
@@ -124,9 +185,9 @@ EOF
     
     HTTP_CODE=$(curl -s -o "$RESPONSE_FILE" -w "%{http_code}" \
         -X POST "http://$ALB_DNS:8802/data/v1" \
-        -H "Content-Type: application/json; charset=utf-8" \
         -H "project: $PROJECT" \
-        -d "$TEST_DATA" \
+        -H "compression: gzip" \
+        -d "$ENCODED_DATA" \
         --connect-timeout 10 \
         --max-time 30)
     

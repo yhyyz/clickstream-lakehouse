@@ -17,6 +17,17 @@ RUN wget https://github.com/doujiang24/lua-resty-kafka/archive/master.zip \
     && unzip master.zip \
     && rm master.zip
 
+# 下载安装zlib
+
+WORKDIR /opt/app/collect-app/
+RUN wget https://github.com/brimworks/lua-zlib/archive/master.zip \
+    && unzip master.zip \
+    && rm master.zip \
+    && cd lua-zlib-master \
+    && cmake -DLUA_INCLUDE_DIR=/usr/local/openresty/luajit/include/luajit-2.1 \
+    && make \
+    && cp zlib.so /usr/local/openresty/lualib/zlib.so
+
 # 复制配置文件
 COPY nginx.conf /opt/app/collect-app/conf/nginx.conf
 COPY collect-app.conf /opt/app/collect-app/conf/vhost/collect-app.conf
