@@ -407,7 +407,7 @@ aws logs tail /ecs/clickstream-alb-cluster --follow --region us-east-1
 ./test-alb-data-flow.sh --project my_topic --count 50
 
 # 指定区域和ALB名称
-./test-alb-data-flow.sh --region us-west-2 --alb-name my-alb
+./test-alb-data-flow.sh --region us-east-1 --alb-name my-alb
 
 # 高频测试
 ./test-alb-data-flow.sh --count 100 --interval 0.1
@@ -446,11 +446,20 @@ NLB_DNS=$(aws elbv2 describe-load-balancers \
   --output text \
   --region us-east-1)
 
-# 发送请求
-curl -X POST "http://$NLB_DNS:8802/collect" \
-  -H "Content-Type: application/json" \
+# 多条发送和单条发送看客户端的设计需要，如果客户端想要多条batch一起发送，减少数据发送频次和网络请求次数，就选择多条发送模式，否则选择单条发送。 两者请选择一种
+# 发送请求-多条list发送
+echo -e '[{"event":"t1"},{"event":"t2"}]'| gzip |base64|xargs -I {} \
+  curl -X POST "http://$NLB_DNS:8802/data/v1" \
   -H "project: app_logs" \
-  -d "$ENCODED_DATA"
+  -H "compression: gzip" \
+  -d {}
+
+# 发送请求-单条发送
+echo -e '{"event":"t1"}'| gzip |base64|xargs -I {} \
+  curl -X POST "http://$NLB_DNS:8802/data/v1" \
+  -H "project: app_logs" \
+  -H "compression: gzip" \
+  -d {}
 ```
 
 #### ALB 方案
@@ -462,11 +471,19 @@ ALB_DNS=$(aws elbv2 describe-load-balancers \
   --output text \
   --region us-east-1)
 
-# 发送请求
-curl -X POST "http://$ALB_DNS/collect" \
-  -H "Content-Type: application/json" \
+# 多条发送和单条发送看客户端的设计需要，如果客户端想要多条batch一起发送，减少数据发送频次和网络请求次数，就选择多条发送模式，否则选择单条发送。 两者请选择一种
+echo -e '[{"event":"t1"},{"event":"t2"}]'| gzip |base64|xargs -I {} \
+  curl -X POST "http://$NLB_DNS:8802/data/v1" \
   -H "project: app_logs" \
-  -d "$ENCODED_DATA"
+  -H "compression: gzip" \
+  -d {}
+
+# 发送请求-单条发送
+echo -e '{"event":"t1"}'| gzip |base64|xargs -I {} \
+  curl -X POST "http://$NLB_DNS:8802/data/v1" \
+  -H "project: app_logs" \
+  -H "compression: gzip" \
+  -d {}
 ```
 
 ### 验证数据流
@@ -659,8 +676,9 @@ aws ecr delete-repository --repository-name <image-name> --force
 
 ## 版本历史
 
-- v1.0: 初始版本，支持NLB + Nginx + Fluent Bit方案
-- v1.1: 添加ALB + Nginx + Vector方案支持，提供双方案选择
+- v1.0: 初始版本，单条数据明文发送
+- v1.1: 支持客户端单条发送，批量batch发送，gzip+base64
+
 
 ---
 

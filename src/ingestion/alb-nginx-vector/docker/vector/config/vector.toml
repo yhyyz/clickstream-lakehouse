@@ -2,7 +2,7 @@
 type = "http_server"
 address = "0.0.0.0:8685"
 strict_path = false
-headers = [ "X_Uri", "X_User_Agent", "X_Forwarded_For", "X_Date", "X_Request_ID", "X_Method", "project"]
+headers = [ "X_Uri", "X_User_Agent", "X_Forwarded_For","X_Remote_Addr", "X_Date", "X_Request_ID", "X_Method", "project", "compression"]
 query_parameters = [ "platform", "fakeIp"]
 method = "POST"
 encoding = "binary"
@@ -18,7 +18,9 @@ source = '''
 if (get_env_var("DEV_MODE") ?? "No") == "Yes" && !is_null(.fakeIp) {
   .meta.ip = del(.fakeIp)
 } else {
-  .meta.ip = del(.X_Forwarded_For)
+  .meta.ip = coalesce(.X_Forwarded_For, .X_Remote_Addr)
+  del(.X_Forwarded_For)
+  del(.X_Remote_Addr)
   del(.fakeIp)
 }
 .meta.rid = del(.X_Request_ID)
@@ -27,16 +29,30 @@ if (get_env_var("DEV_MODE") ?? "No") == "Yes" && !is_null(.fakeIp) {
 .meta.project = del(.project)
 .meta.ctime = to_unix_timestamp(now()) * 1000
 
-parsed_data, parse_err = parse_json(.message)
-if parse_err == null {
-  .data = parsed_data
-  .meta.parse_status = "success"
-  .meta.raw = ""
+decoded_data, decode_err = decode_base64(.message)
+if decode_err == null {
+  parsed_data, parse_err = parse_json(decoded_data)
+  if parse_err == null {
+    if is_array(parsed_data) {
+      .data_list = parsed_data
+    } else {
+      .data = parsed_data
+    }
+    .meta.parse_status = "success"
+    .meta.raw = ""
+  } else {
+    .data = {}
+    .data_list = []
+    .meta.parse_status = "json_parse_failed"
+    .meta.raw = if decoded_data != null { to_string(decoded_data) } else { "" }
+  }
 } else {
   .data = {}
-  .meta.parse_status = "failed"
-  .meta.raw = .message
+  .data_list = []
+  .meta.parse_status = "base64_decode_failed"
+  .meta.raw = if .message != null { to_string(.message) } else { "" }
 }
+
 del(.message)
 del(.path)
 del(.source_type)

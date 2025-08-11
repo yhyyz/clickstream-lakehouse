@@ -21,6 +21,7 @@ Clickstream Lakehouse 数据流测试脚本 (NLB 方案)
     -p, --project PROJECT        项目名称/MSK主题名称 (默认: $DEFAULT_PROJECT)
     -c, --count COUNT            发送测试消息数量 (默认: 10)
     -i, --interval SECONDS       消息发送间隔 (默认: 1秒)
+    -b, --batch_send             客户端batch发送 (默认: false)   
     -v, --verbose                显示详细的响应信息
     -h, --help                   显示此帮助信息
 
@@ -45,6 +46,7 @@ PROJECT="$DEFAULT_PROJECT"
 MESSAGE_COUNT=10
 INTERVAL=1
 VERBOSE=false
+BATCH_SEND=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -66,6 +68,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -i|--interval)
             INTERVAL="$2"
+            shift 2
+            ;;
+        -b|--batch_send)
+            BATCH_SEND=true
             shift 2
             ;;
         -v|--verbose)
@@ -160,9 +166,47 @@ for ((i=1; i<=MESSAGE_COUNT; i++)); do
 EOF
     )
     
-    # Base64编码
-    ENCODED_DATA=$(echo -n "$TEST_DATA" | base64 -w 0)
-    
+    TEST_DATA_LIST=$(cat << EOF
+[
+{
+    "event": "page_view",
+    "user_id": "$USER_ID",
+    "session_id": "$SESSION_ID",
+    "timestamp": "$TIMESTAMP",
+    "page_url": "https://example.com/page$i",
+    "referrer": "https://example.com/home",
+    "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+    "ip_address": "192.168.1.$((i % 255 + 1))",
+    "properties": {
+        "page_title": "Test Page $i",
+        "category": "test",
+        "test_batch": "nlb_test_$(date +%s)"
+    }
+},
+{
+    "event": "page_view",
+    "user_id": "$USER_ID",
+    "session_id": "$SESSION_ID",
+    "timestamp": "$TIMESTAMP",
+    "page_url": "https://example.com/page$i",
+    "referrer": "https://example.com/home",
+    "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+    "ip_address": "192.168.1.$((i % 255 + 1))",
+    "properties": {
+        "page_title": "Test Page $i",
+        "category": "test",
+        "test_batch": "nlb_test_$(date +%s)"
+    }
+}
+]
+EOF
+    )
+    # gzip + Base64编码
+    if [[ "$BATCH_SEND" == "true" ]]; then
+        ENCODED_DATA=$(echo -n "$TEST_DATA" |gzip| base64 -w 0)
+    else
+        ENCODED_DATA=$(echo -n "$TEST_DATA_LIST" |gzip| base64 -w 0) 
+    fi
     # 发送请求
     echo -n "发送消息 $i/$MESSAGE_COUNT... "
     
@@ -171,8 +215,8 @@ EOF
     
     HTTP_STATUS=$(curl -s -o "$RESPONSE_FILE" -w "%{http_code}" \
         -X POST "$TEST_ENDPOINT" \
-        -H "Content-Type: application/json" \
         -H "project: $PROJECT" \
+        -H "compression: gzip" \
         -d "$ENCODED_DATA" \
         --connect-timeout 10 \
         --max-time 30 || echo "000")
