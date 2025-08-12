@@ -45,7 +45,7 @@ NLB_NAME="$DEFAULT_NLB_NAME"
 PROJECT="$DEFAULT_PROJECT"
 MESSAGE_COUNT=10
 INTERVAL=1
-VERBOSE=false
+VERBOSE=true
 BATCH_SEND=false
 
 while [[ $# -gt 0 ]]; do
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -b|--batch_send)
             BATCH_SEND=true
-            shift 2
+            shift
             ;;
         -v|--verbose)
             VERBOSE=true
@@ -129,7 +129,8 @@ echo "NLB名称: $NLB_NAME"
 echo "项目名称: $PROJECT"
 echo "消息数量: $MESSAGE_COUNT"
 echo "发送间隔: ${INTERVAL}秒"
-echo "数据编码: Base64"
+echo "数据编码: gzip+Base64"
+echo "客户端batch模式: $BATCH_SEND"
 echo "详细模式: $VERBOSE"
 echo "=========================================="
 echo "NLB DNS: $NLB_DNS"
@@ -143,7 +144,7 @@ FAILED_COUNT=0
 # 发送测试消息
 for ((i=1; i<=MESSAGE_COUNT; i++)); do
     # 生成测试数据
-    TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    TIMESTAMP=$(date +%s)
     USER_ID="test_user_$(printf "%04d" $i)"
     SESSION_ID="session_$(date +%s)_$i"
     
@@ -152,7 +153,7 @@ for ((i=1; i<=MESSAGE_COUNT; i++)); do
     "event": "page_view",
     "user_id": "$USER_ID",
     "session_id": "$SESSION_ID",
-    "timestamp": "$TIMESTAMP",
+    "timestamp": $TIMESTAMP,
     "page_url": "https://example.com/page$i",
     "referrer": "https://example.com/home",
     "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
@@ -172,7 +173,7 @@ EOF
     "event": "page_view",
     "user_id": "$USER_ID",
     "session_id": "$SESSION_ID",
-    "timestamp": "$TIMESTAMP",
+    "timestamp": $TIMESTAMP,
     "page_url": "https://example.com/page$i",
     "referrer": "https://example.com/home",
     "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
@@ -187,7 +188,7 @@ EOF
     "event": "page_view",
     "user_id": "$USER_ID",
     "session_id": "$SESSION_ID",
-    "timestamp": "$TIMESTAMP",
+    "timestamp": $TIMESTAMP,
     "page_url": "https://example.com/page$i",
     "referrer": "https://example.com/home",
     "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
@@ -203,9 +204,9 @@ EOF
     )
     # gzip + Base64编码
     if [[ "$BATCH_SEND" == "true" ]]; then
-        ENCODED_DATA=$(echo -n "$TEST_DATA" |gzip| base64 -w 0)
+        ENCODED_DATA=$(echo -n "$TEST_DATA_LIST"|jq -c |gzip| base64 -w 0)
     else
-        ENCODED_DATA=$(echo -n "$TEST_DATA_LIST" |gzip| base64 -w 0) 
+        ENCODED_DATA=$(echo -n "$TEST_DATA" |jq -c |gzip| base64 -w 0) 
     fi
     # 发送请求
     echo -n "发送消息 $i/$MESSAGE_COUNT... "

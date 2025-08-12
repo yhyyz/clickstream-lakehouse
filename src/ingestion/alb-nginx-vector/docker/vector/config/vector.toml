@@ -18,7 +18,11 @@ source = '''
 if (get_env_var("DEV_MODE") ?? "No") == "Yes" && !is_null(.fakeIp) {
   .meta.ip = del(.fakeIp)
 } else {
-  .meta.ip = coalesce(.X_Forwarded_For, .X_Remote_Addr)
+  .meta.ip = if !is_nullish(.X_Forwarded_For) {
+    .X_Forwarded_For
+  } else {
+    .X_Remote_Addr
+  }
   del(.X_Forwarded_For)
   del(.X_Remote_Addr)
   del(.fakeIp)
@@ -31,7 +35,12 @@ if (get_env_var("DEV_MODE") ?? "No") == "Yes" && !is_null(.fakeIp) {
 
 decoded_data, decode_err = decode_base64(.message)
 if decode_err == null {
-  parsed_data, parse_err = parse_json(decoded_data)
+  compression = string(.compression) ?? ""
+  decode_res_data = decoded_data
+  if compression == "gzip" {
+      decode_res_data = decode_gzip(decoded_data)  ?? decoded_data
+  }
+  parsed_data, parse_err = parse_json(decode_res_data)
   if parse_err == null {
     if is_array(parsed_data) {
       .data_list = parsed_data
@@ -44,17 +53,18 @@ if decode_err == null {
     .data = {}
     .data_list = []
     .meta.parse_status = "json_parse_failed"
-    .meta.raw = if decoded_data != null { to_string(decoded_data) } else { "" }
+    .meta.raw =  string(.message) ?? ""
   }
 } else {
   .data = {}
   .data_list = []
   .meta.parse_status = "base64_decode_failed"
-  .meta.raw = if .message != null { to_string(.message) } else { "" }
+  .meta.raw = string(.message) ?? ""
 }
 
 del(.message)
 del(.path)
 del(.source_type)
 del(.timestamp)
+del(.compression)
 '''

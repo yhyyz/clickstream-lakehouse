@@ -193,6 +193,9 @@ clickstream-lakehouse/
   --dry-run
 ```
 
+### 6. 全安组检查
+* 请确保MSK,ECS,NLB/ALB 安全组配置正确(MSK要允许ECS的流量进来,ECS要允许ALB/NLB流量进来)，如果使用ALB可以使用`src/ingestion/alb-nginx-vector/configure-security-groups.sh` 将安全组打通
+
 ## 详细配置参数
 
 ### 必需参数
@@ -447,6 +450,7 @@ NLB_DNS=$(aws elbv2 describe-load-balancers \
   --region us-east-1)
 
 # 多条发送和单条发送看客户端的设计需要，如果客户端想要多条batch一起发送，减少数据发送频次和网络请求次数，就选择多条发送模式，否则选择单条发送。 两者请选择一种
+# project 在NLB方案中，其值就是kafka的topic
 # 发送请求-多条list发送
 echo -e '[{"event":"t1"},{"event":"t2"}]'| gzip |base64|xargs -I {} \
   curl -X POST "http://$NLB_DNS:8802/data/v1" \
@@ -472,6 +476,7 @@ ALB_DNS=$(aws elbv2 describe-load-balancers \
   --region us-east-1)
 
 # 多条发送和单条发送看客户端的设计需要，如果客户端想要多条batch一起发送，减少数据发送频次和网络请求次数，就选择多条发送模式，否则选择单条发送。 两者请选择一种
+# alb方案中project中的值并不代表topic的名称，发送的topic在ecs task中的环境变量定义
 echo -e '[{"event":"t1"},{"event":"t2"}]'| gzip |base64|xargs -I {} \
   curl -X POST "http://$NLB_DNS:8802/data/v1" \
   -H "project: app_logs" \
@@ -484,6 +489,139 @@ echo -e '{"event":"t1"}'| gzip |base64|xargs -I {} \
   -H "project: app_logs" \
   -H "compression: gzip" \
   -d {}
+```
+
+### 数据样例参考
+
+* 发送到kafka中的数据样式，客户端批量发送模式，数据会在data_list字段中有多条
+```json
+{
+  "data_list": [
+    {
+      "event": "page_view",
+      "ip_address": "192.168.1.10",
+      "page_url": "https://example.com/page9",
+      "properties": {
+        "category": "test",
+        "page_title": "Test Page 9",
+        "test_batch": "nlb_test_1754978306"
+      },
+      "referrer": "https://example.com/home",
+      "session_id": "",
+      "timestamp": "",
+      "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+      "user_id": ""
+    },
+    {
+      "event": "page_view",
+      "ip_address": "192.168.1.10",
+      "page_url": "https://example.com/page9",
+      "properties": {
+        "category": "test",
+        "page_title": "Test Page 9",
+        "test_batch": "nlb_test_1754978306"
+      },
+      "referrer": "https://example.com/home",
+      "session_id": "",
+      "timestamp": "",
+      "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+      "user_id": ""
+    }
+  ],
+  "meta": {
+    "ctime": 1754978306000,
+    "date": "2025-08-12T05:58:26+00:00",
+    "ip": "18.206.223.167",
+    "method": "POST",
+    "parse_status": "success",
+    "platform": null,
+    "project": "app_logs",
+    "raw": "",
+    "rid": "bf55e5d640c1a344e02c964292e9cbbe",
+    "ua": "curl/8.11.1",
+    "uri": "/data/v1"
+  }
+}
+```
+
+* 发送到kafka中的数据样式，客户端单条发送模式，数据会在data字段
+```json
+{
+  "data": {
+    "event": "page_view",
+    "ip_address": "192.168.1.3",
+    "page_url": "https://example.com/page2",
+    "properties": {
+      "category": "test",
+      "page_title": "Test Page 2",
+      "test_batch": "nlb_test_1754978128"
+    },
+    "referrer": "https://example.com/home",
+    "session_id": "",
+    "timestamp": "",
+    "user_agent": "Mozilla/5.0 (compatible; ClickstreamTest/1.0)",
+    "user_id": ""
+  },
+  "meta": {
+    "ctime": 1754978128000,
+    "date": "2025-08-12T05:55:28+00:00",
+    "ip": "18.206.223.167",
+    "method": "POST",
+    "parse_status": "success",
+    "platform": null,
+    "project": "app_logs",
+    "raw": "",
+    "rid": "ef27bcccd8dd3c0a03c8f3de49cd4f68",
+    "ua": "curl/8.11.1",
+    "uri": "/data/v1"
+  }
+}
+
+* 自动创建的iceberg表的样例
+
+```sql
+CREATE TABLE iceberg_db.app_logs (
+  -- meta 字段组
+  meta_raw string,
+  meta_ip string,
+  meta_date string,
+  meta_uri string,
+  meta_parse_status string,
+  meta_project string,
+  meta_ua string,
+  meta_method string,
+  meta_rid string,
+  meta_ctime bigint,
+  ....
+
+  -- data 字段组展开
+  data_session_id string,
+  data_properties_is_logged_in boolean,
+  data_app_version string,
+  data_referrer string,
+  data_ip string,
+  data_properties_product_id bigint,
+  data_os string,
+  data_user_id string,
+  data_timestamp bigint,
+  data_event_id string,
+  data_extra_data string,
+  data_url string,
+  data_properties_currency string,
+  ....
+  
+  -- 多条上报list
+  data_list array<struct<page_url: string, referrer: string, user_id: string, session_id: string, ip_address: string, event: string, properties: struct<page_title: string, category: string, test_batch: string>, user_agent: string, timestamp: bigint>>,
+
+  messageTS timestamp
+)
+PARTITIONED BY (day(`messageTS`))
+LOCATION 's3://app-common-util/app-logs-data-v1/iceberg_db.db/app_logs'
+TBLPROPERTIES (
+  'table_type'='iceberg',
+  'write_compression'='zstd'
+);
+
 ```
 
 ### 验证数据流
