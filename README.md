@@ -37,6 +37,8 @@ C. 不使用当前方式写kafka, 数据先写磁盘，所有数据通过fluent-
 D. 使用nginx+vector http ,vector支持数据先缓存在磁盘，如果kafka宕机，数据写磁盘，恢复了之后再发送, 依然。需要配置一个大的磁盘防止kafka宕机，磁盘写满
 ```
 
+### 压测参考
+[性能压测参考](./PERFORMANCE_TEST.md)
 
 ### 数据链路说明
 
@@ -643,7 +645,87 @@ aws s3 ls s3://your-bucket/topics/app_logs/ --recursive
 # 通过Athena或Spark查询Iceberg表
 ```
 
+4. MSK(kafka)常用命令
+```bash
+bs="xxxx:9092"
+
+# 命令行消费数据
+./bin/kafka-console-consumer.sh --bootstrap-server ${bs} --topic  app_logs 
+
+# 查看指定partition和offset的一条数据
+./bin/kafka-console-consumer.sh --bootstrap-server  ${bs} \
+  --topic app_logs \
+  --partition 6 \
+  --offset 94370871 \
+  --max-messages 1
+
+#  重置消费者组的offset，下面是是重置 cg-control-msk-s3-sink-iceberg，connect-msk-s3-sink-iceberg 这两个消费者组的offset
+./bin/kafka-consumer-groups.sh --bootstrap-server ${bs} \
+  --group cg-control-msk-s3-sink-iceberg \
+  --reset-offsets \
+  --topic app_logs \
+  --to-latest \
+
+ ./bin/kafka-consumer-groups.sh --bootstrap-server ${bs} \
+  --group connect-msk-s3-sink-iceberg \
+  --reset-offsets \
+  --topic app_logs \
+  --to-latest \
+  --execute
+
+# 修改consumer group的offset为指定offset位置
+  ./bin/kafka-consumer-groups.sh --bootstrap-server ${bs} \
+  --group connect-msk-s3-sink-json \
+  --reset-offsets \
+  --topic app_logs \
+  --to-offset 1000 \
+  --execute
+
+# 查看所有的consumer group
+./bin/kafka-consumer-groups.sh --bootstrap-server ${bs} --describe --all-groups
+
+# 创建topic
+# 比如写iceberg时，offset的存储，解释：https://github.com/databricks/iceberg-kafka-connect/tree/main?tab=readme-ov-file#control-topic
+./bin/kafka-topics.sh  \
+  --bootstrap-server ${bs} \
+  --create \
+  --topic control-iceberg \
+  --replication-factor 3 \
+  --partitions 25
+
+# 比如创建，存储数据的topic 
+./bin/kafka-topics.sh \
+  --bootstrap-server ${bs} \
+  --create \
+  --topic app_logs
+  --replication-factor 3 \
+  --partitions 18 
+
+```
+
 ## 故障排除
+
+### 注意事项
+
+1. NLB的的子网配置要在公网子网，因为要允许外网进流量，否则接口请求会不通
+
+2. 当前接口请求的header信息里面加了project参数，是为了做业务的区别，这里project的值同时也是lua脚本里面写的到kafka topic的名字， 这个topic必须在kafka创建，已经提供了自动创建的脚本，部署的时候会自动创建。
+
+3. ECS的创建的TASK个数和资源，根据自己请求调整任务个数，请务必检查创建的TASK个数
+
+4. MSK connector写Icberg格式时，配置了transform将嵌套的json展平存储(也可不展平保留structj机构但不易读查)。同时注意iceberg 不支持嵌套字段作为分区字段。当前使用的分区字段，支持ingestion_time和kafka_time， kafka_time 是数据写入到kafka时的时间，这个时间是kafka自己对于当前记录的时间字段使用的是messageTS字段,ingestion_time是ECS服务收到数据生成的服务端时间，部署msk connector的时候已经给到了参数让你选择，默认是ingestion_time。 你可以定义自己的转换规则：转换规则配置： https://docs.confluent.io/kafka-connectors/transforms/current/timestampconverter.html
+
+5. 写iceberg时，offset的存储是有单独的topic的，本文部署文档已经说明，先创建这个topic. 解释：https://github.com/databricks/iceberg-kafka-connect/tree/main?tab=readme-ov-file#control-topic
+
+6. 写Iceberg时，配置表的数据库，使用default或者选择database，这个database的location，不要是file://本地location，否则sink iceberg会先找这个路径，应该是S3或者是空都可以。本文脚本中会自动创建iceberg_db. 如果和你的数据库重名，请注意检查你数据库的location.
+
+7. MSK connector配置的子网应是私有子网而不是公网子网，脚本创建时会默认使用msk集群的子网，如果集群是私有子网，msk connector就是私有子网。如果集群是公有子网，请请注意你需要手动创建msk connector在私有子网。 网络的最佳实践是：私有子网+NAT网关，服务的配置非必要不选公有子网。另外注意vpc配置s3和glue gateway endpoint.
+
+8. MSK connector的资源配置可以选择动态扩缩，时间是分钟级别，当前是预置模式，扩缩可能会有流量尖刺。
+
+9. MSK connector当前worker config默认配置从topic的earliest位置消费，也就是首次从头消费，之后再修改MSK connector，或者遇到错误重新创建MSK connector，只要msk connector名字不变，消费会从上次消费的位置继续消费, 因为会根据名字使用统一个消费者组。
+
+10. MSK connector如果创建遇到错误，不能修改，只能重新创建。 创建成功后可以更新connector配置。但如果要更新worker 和plugin必须重建，不支持在原有connector更新。通过API可以更新worker的数量。
 
 ### 常见问题
 
