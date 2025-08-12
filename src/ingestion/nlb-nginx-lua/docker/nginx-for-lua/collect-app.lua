@@ -105,7 +105,7 @@ data["method"] = ngx.var.request_method
 -- 将增加的信息编码为json
 local meta = cjson.encode(data)
 -- 先对请求数据进行base64解码
-local decoded_body_data = ngx.decode_base64(ngx.unescape_uri(body_data))
+local decoded_body_data = ngx.decode_base64(body_data)
 if decoded_body_data == nil then
   ngx.say('{"code":500,"data":"base64 decode failed"}')
   return
@@ -144,7 +144,7 @@ end
 -- 将拼接后的数据再进行base64编码
 -- local res = ngx.encode_base64(combined_data)
 -- 将编码的json信息做base64 和 body_data拼接, 这是meta和data直接拼接方式，base64 发送到kafka,当前不采用，只是给个参考例子
--- local res = ngx.encode_base64(meta) .. "-" .. ngx.unescape_uri(body_data)
+-- local res = ngx.encode_base64(meta) .. "-" .. body_data
 -- kafka 生成者
 local bp = producer:new(broker_list,producer_config)
 -- 发送数据，topic=project，key=current_time

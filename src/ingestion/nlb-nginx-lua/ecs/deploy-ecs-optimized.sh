@@ -326,7 +326,7 @@ EOF
             --policy-document file:///tmp/ecs-task-policy.json \
             --region "$REGION"
         
-        rm /tmp/ecs-task-policy.json
+        #rm /tmp/ecs-task-policy.json
     fi
     
     # Create ECS Infrastructure Role for EBS
@@ -394,11 +394,11 @@ EOF
             --policy-document file:///tmp/ecs-ebs-policy.json \
             --region "$REGION"
         
-        rm /tmp/ecs-infra-trust-policy.json /tmp/ecs-ebs-policy.json
+        #rm /tmp/ecs-infra-trust-policy.json /tmp/ecs-ebs-policy.json
     fi
     
     # Clean up trust policy file
-    rm -f /tmp/ecs-task-trust-policy.json
+    #rm -f /tmp/ecs-task-trust-policy.json
     
     # Wait for roles to be available
     echo "Waiting for IAM roles to be available..."
@@ -510,7 +510,7 @@ generate_task_definition() {
         },
         {
           "name": "SEND_S3_ONLY",
-          "value": "enable"
+          "value": "disable"
         },
         {
           "name": "S3_BUCKET",
@@ -786,7 +786,7 @@ main() {
         --output table
     
     # Clean up generated files
-    rm -f task-definition-generated.json service-definition-generated.json
+    # rm -f task-definition-generated.json service-definition-generated.json
     
     echo ""
     echo "Deployment completed successfully!"

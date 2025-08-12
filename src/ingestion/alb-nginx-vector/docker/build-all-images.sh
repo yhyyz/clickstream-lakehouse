@@ -133,7 +133,8 @@ echo "Vector ECR镜像URI: $VECTOR_ECR_URI:latest"
 
 # 保存镜像信息到临时文件
 echo "保存镜像信息..."
-cat > ../tmp/docker-images-info.json << EOF
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cat > $SCRIPT_DIR/docker-images-info.json << EOF
 {
   "nginx_image_uri": "$NGINX_ECR_URI:latest",
   "vector_image_uri": "$VECTOR_ECR_URI:latest",
@@ -143,4 +144,4 @@ cat > ../tmp/docker-images-info.json << EOF
 }
 EOF
 
-echo "镜像信息已保存到 ../tmp/docker-images-info.json"
+echo "镜像信息已保存到 $SCRIPT_DIR/docker-images-info.json"

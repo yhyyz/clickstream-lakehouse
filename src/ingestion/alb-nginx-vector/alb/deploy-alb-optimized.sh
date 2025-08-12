@@ -548,7 +548,8 @@ get_alb_info() {
 
 # 保存部署信息
 save_deployment_info() {
-    cat > ../tmp/alb-info.json << EOF
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    cat > $SCRIPT_DIR/alb-info.json << EOF
 {
   "deployment_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "region": "$REGION",
@@ -575,7 +576,7 @@ save_deployment_info() {
 }
 EOF
     
-    echo "部署信息已保存到 ../tmp/alb-info.json"
+    echo "部署信息已保存到 $SCRIPT_DIR/alb-info.json"
 }
 
 # 主函数

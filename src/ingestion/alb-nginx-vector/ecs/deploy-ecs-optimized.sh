@@ -753,7 +753,9 @@ main() {
     
     # Save service information
     echo "Saving service information..."
-    cat > ../tmp/ecs-service-info.json << EOF
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+    cat > $SCRIPT_DIR/ecs-service-info.json << EOF
 {
   "cluster_name": "$CLUSTER_NAME",
   "service_name": "$SERVICE_NAME",
@@ -771,11 +773,11 @@ main() {
 EOF
     
     # Clean up generated files
-    rm -f task-definition-generated.json service-definition-generated.json
+    #rm -f task-definition-generated.json service-definition-generated.json
     
     echo ""
     echo "Deployment completed successfully!"
-    echo "Service information saved to ../tmp/ecs-service-info.json"
+    echo "Service information saved to $SCRIPT_DIR/ecs-service-info.json"
 }
 
 # Run main function with all arguments
