@@ -576,6 +576,7 @@ echo -e '{"event":"t1"}'| gzip |base64|xargs -I {} \
     "uri": "/data/v1"
   }
 }
+```
 
 * 自动创建的iceberg表的样例
 
